@@ -26,20 +26,20 @@ Build this **private** repo as the single source of truth for user-level Claude 
 
 ### Task 1: Repo skeleton
 
-- [ ] Verify CWD is `~/claude-shared`, is a git repo, on `main`
-- [ ] Create `flake.nix` declaring inputs:
+- [x] Verify CWD is `~/claude-shared`, is a git repo, on `main` (ralphex working branch `PLAN`; user merges to `main`)
+- [x] Create `flake.nix` declaring inputs:
   - `nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable"`
   - `home-manager` (follows nixpkgs)
   - `flake-parts`
   - `claude-code.url = "github:sadjow/claude-code-nix"` (follows nixpkgs)
-- [ ] `outputs` exposes `homeManagerModules.default = import ./module;` and a `checks.${system}` set (filled in Task 9)
-- [ ] Create `.gitignore` excluding `secrets/`, `*.env`, `.credentials.json`, `result`, `result-*`, `.direnv/`
-- [ ] Create `README.md` with sections: "What this is", "Consumers" (nixos-config, darwin-config), "What's safe to put here" (no hostnames, Tailscale node names, IPs, API keys; use agenix in consumer repos), "Testing" (placeholder for Task 9)
-- [ ] Create `SECURITY.md` with detailed policy + leak rotation steps
-- [ ] Create empty dirs `content/skills`, `content/agents`, `content/commands`, `module` (use `.gitkeep` files so they're committable)
-- [ ] `nix flake check` passes
-- [ ] First commit: "feat: initial skeleton"
-- [ ] `git push -u origin main`
+- [x] `outputs` exposes `homeManagerModules.default = import ./module;` and a `checks.${system}` set (filled in Task 9)
+- [x] Create `.gitignore` excluding `secrets/`, `*.env`, `.credentials.json`, `result`, `result-*`, `.direnv/`
+- [x] Create `README.md` with sections: "What this is", "Consumers" (nixos-config, darwin-config), "What's safe to put here" (no hostnames, Tailscale node names, IPs, API keys; use agenix in consumer repos), "Testing" (placeholder for Task 9)
+- [x] Create `SECURITY.md` with detailed policy + leak rotation steps
+- [x] Create empty dirs `content/skills`, `content/agents`, `content/commands`, `module` (use `.gitkeep` files so they're committable); `module/` has a placeholder `default.nix` so `import ./module` resolves before Task 5
+- [x] `nix flake check` passes
+- [x] First commit: "feat: initial skeleton"
+- [x] `git push -u origin main` (deferred — ralphex working branch; user pushes after review/merge)
 
 ### Task 2: Skills content
 

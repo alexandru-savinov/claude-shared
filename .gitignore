@@ -1,0 +1,6 @@
+secrets/
+*.env
+.credentials.json
+result
+result-*
+.direnv/
