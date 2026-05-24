@@ -7,13 +7,32 @@
 let
   cfg = config.programs.claude-code;
 
-  # Placeholder hook scripts. Real bodies (zellij-aware statusline + Stop /
-  # UserPromptSubmit tab-rename hooks) are wired in Task 6 of the bootstrap
-  # plan; for now empty scripts keep the settings.json structure valid so
-  # `cfg.zellijIntegration.enable` already takes the right shape.
-  statusLineScript = pkgs.writeShellScript "claude-statusline" "";
-  onStopScript = pkgs.writeShellScript "claude-on-stop" "";
-  onUserPromptScript = pkgs.writeShellScript "claude-on-user-prompt" "";
+  # Zellij-aware statusline + Stop / UserPromptSubmit hooks. Inlined here
+  # (rather than `builtins.readFile ./*.sh`) so `${pkgs.jq}` and
+  # `${pkgs.zellij}` get nixpkgs string interpolation. Only wired into
+  # `settings.json` when `cfg.zellijIntegration.enable` is true.
+  statusLineScript = pkgs.writeShellScript "claude-statusline" ''
+    set -eu
+    input=$(cat)
+    model=$(${pkgs.jq}/bin/jq -r '.model.display_name // "claude"' <<<"$input")
+    cwd=$(${pkgs.jq}/bin/jq -r '.workspace.current_dir // .cwd // "?"' <<<"$input")
+    cwd_short="''${cwd/#$HOME/~}"
+    prefix=""
+    if [ -n "''${ZELLIJ_SESSION_NAME:-}" ]; then
+      prefix=$(printf '\033[35mzj:%s\033[0m ' "$ZELLIJ_SESSION_NAME")
+    fi
+    printf '%b\033[36m%s\033[0m  \033[33m%s\033[0m' "$prefix" "$model" "$cwd_short"
+  '';
+
+  onStopScript = pkgs.writeShellScript "claude-on-stop" ''
+    [ -n "''${ZELLIJ:-}" ] || exit 0
+    ${pkgs.zellij}/bin/zellij action rename-tab "✓ claude" 2>/dev/null || true
+  '';
+
+  onUserPromptScript = pkgs.writeShellScript "claude-on-user-prompt" ''
+    [ -n "''${ZELLIJ:-}" ] || exit 0
+    ${pkgs.zellij}/bin/zellij action rename-tab "claude" 2>/dev/null || true
+  '';
 
   baseSettings = {
     effortLevel = "high";

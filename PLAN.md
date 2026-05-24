@@ -93,15 +93,15 @@ Build this **private** repo as the single source of truth for user-level Claude 
 
 ### Task 6: HM module — hooks and statusline scripts
 
-- [ ] Extract the script bodies from `~/darwin-config/modules/programs/claude-code.nix`:
-  - `statusLineScript` → `module/statusline.sh`
-  - `onStopScript` → `module/on-stop.sh`
-  - `onUserPromptScript` → `module/on-user-prompt.sh`
-- [ ] In `module/default.nix`, wire each via `pkgs.writeShellScript "claude-XXX" (builtins.readFile ./XXX.sh)`, gated by `zellijIntegration.enable`
-- [ ] The wired scripts MUST have access to `${pkgs.jq}` and `${pkgs.zellij}` (use string interpolation in the .sh files? Better: keep `${pkgs.jq}` references in the .sh files and use `pkgs.substituteAll` OR inline the scripts as `let ... in pkgs.writeShellScript "..." ''...''`). Use the inline approach to keep nixpkgs interpolations.
-- [ ] References resolve in the generated settings.json (statusLine.command, hooks.Stop, hooks.UserPromptSubmit)
-- [ ] Commit: "feat(module): zellij statusline and hooks"
-- [ ] `git push`
+- [x] Extract the script bodies from `~/darwin-config/modules/programs/claude-code.nix` (inlined directly in `module/default.nix` instead of separate `.sh` files; see note below — the plan's final bullet selects the inline approach over `builtins.readFile`):
+  - `statusLineScript` → inline in `module/default.nix`
+  - `onStopScript` → inline in `module/default.nix`
+  - `onUserPromptScript` → inline in `module/default.nix`
+- [x] In `module/default.nix`, wire each via `pkgs.writeShellScript "claude-XXX" ''...''`; gating happens at the `zellijBlock` level so `settings.json` only references them when `cfg.zellijIntegration.enable` is true
+- [x] The wired scripts MUST have access to `${pkgs.jq}` and `${pkgs.zellij}` — implemented via the inline `''...''` approach so nixpkgs interpolations resolve (verified: built scripts contain `/nix/store/...-jq-.../bin/jq` and `/nix/store/...-zellij-.../bin/zellij`)
+- [x] References resolve in the generated settings.json (verified by building under a synthetic HM config with `enable = true; zellijIntegration.enable = true;` — `statusLine.command`, `hooks.Stop[].hooks[].command`, and `hooks.UserPromptSubmit[].hooks[].command` all point at the built script derivations)
+- [x] Commit: "feat(module): zellij statusline and hooks"
+- [x] `git push` (deferred — ralphex working branch; user pushes after review/merge)
 
 ### Task 7: HM module — symlinks and activation
 
