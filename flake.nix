@@ -29,7 +29,10 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in
     {
-      homeManagerModules.default = import ./module;
+      homeManagerModules.default = _: {
+        imports = [ ./module ];
+        _module.args.inputs = inputs;
+      };
 
       # Checks are populated in Task 9.
       checks = forAllSystems (_system: { });

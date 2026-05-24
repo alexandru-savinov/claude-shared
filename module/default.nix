@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  inputs,
   ...
 }:
 let
@@ -110,8 +111,8 @@ in
       type = lib.types.bool;
       default = false;
       description = ''
-        Whether to install the Claude Code CLI itself via `home.packages`.
-        Wired in Task 8 of the bootstrap plan.
+        Whether to install the Claude Code CLI itself via `home.packages`
+        from the `claude-code` flake input.
       '';
     };
 
@@ -172,7 +173,12 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable (lib.mkMerge [
+  # Default for `inputs` so the module evaluates without the flake wrapper
+  # (e.g. when imported directly in a test harness with `installPackage = false`).
+  # The flake's `homeManagerModules.default` overrides this with the real inputs.
+  config = lib.mkMerge [
+    { _module.args.inputs = lib.mkDefault null; }
+    (lib.mkIf cfg.enable (lib.mkMerge [
     {
       home.file.".claude/skills".source =
         config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/skills";
@@ -210,5 +216,23 @@ in
         fi
       '';
     })
-  ]);
+    (lib.mkIf cfg.installPackage {
+      assertions = [
+        {
+          assertion = inputs != null && inputs ? claude-code;
+          message = ''
+            programs.claude-code.installPackage = true requires the
+            `claude-code` flake input to be threaded through via
+            `_module.args.inputs`. Import this module via
+            `claude-shared.homeManagerModules.default` from its flake.
+          '';
+        }
+      ];
+      home.packages = [ inputs.claude-code.packages.${pkgs.system}.default ];
+    })
+    (lib.mkIf (cfg.userClaudeMd != null) {
+      home.file.".claude/CLAUDE.md".source = cfg.userClaudeMd;
+    })
+    ]))
+  ];
 }

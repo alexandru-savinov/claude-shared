@@ -124,13 +124,13 @@ Build this **private** repo as the single source of truth for user-level Claude 
 
 ### Task 8: HM module — package install + userClaudeMd
 
-- [ ] When `cfg.installPackage = true`: add `inputs.claude-code.packages.${pkgs.system}.default` to `home.packages`
-  - Pass `inputs` through via `_module.args.inputs = inputs;` in `flake.nix` outputs (so the module can `{ inputs, ... }:` cleanly)
-- [ ] When `cfg.userClaudeMd != null`: `home.file.".claude/CLAUDE.md".source = cfg.userClaudeMd;`
-- [ ] When null: no `~/.claude/CLAUDE.md` is written
-- [ ] Sanity: `nix eval` with `installPackage = true` against a synthetic HM config; package resolves
-- [ ] Commit: "feat(module): package install + optional user CLAUDE.md"
-- [ ] `git push`
+- [x] When `cfg.installPackage = true`: add `inputs.claude-code.packages.${pkgs.system}.default` to `home.packages`
+  - Pass `inputs` through via `_module.args.inputs = inputs;` in `flake.nix` outputs (so the module can `{ inputs, ... }:` cleanly). Module also sets `_module.args.inputs = lib.mkDefault null;` so direct imports without the wrapper still evaluate (e.g. test harnesses), and an assertion guards `installPackage = true` against the null case.
+- [x] When `cfg.userClaudeMd != null`: `home.file.".claude/CLAUDE.md".source = cfg.userClaudeMd;`
+- [x] When null: no `~/.claude/CLAUDE.md` is written (verified via synthetic eval: `cfg.home.file ? ".claude/CLAUDE.md"` is false when `userClaudeMd` is unset)
+- [x] Sanity: `nix eval` with `installPackage = true` against a synthetic HM config; package resolves (claude-code appears in `home.packages` and `CLAUDE.md` source resolves to a `/nix/store/...-CLAUDE.md` path)
+- [x] Commit: "feat(module): package install + optional user CLAUDE.md"
+- [x] `git push` (deferred — ralphex working branch; user pushes after review/merge)
 
 ### Task 9: Test harness
 
