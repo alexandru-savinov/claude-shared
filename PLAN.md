@@ -134,12 +134,12 @@ Build this **private** repo as the single source of truth for user-level Claude 
 
 ### Task 9: Test harness
 
-- [ ] Add `checks.${system}.module-all-enabled` derivation that evaluates the HM module under a synthetic home-manager configuration with all options enabled and a fake `inputs.claude-code` stub (or use `installPackage = false` to avoid needing the real package eval)
-- [ ] Add `checks.${system}.module-disabled` — with `enable = false`, asserts no `~/.claude/*` writes
-- [ ] `nix flake check` passes both
-- [ ] Fill in the "Testing" section of `README.md`: clone to scratch dir → point throwaway HM at it → switch → verify symlinks point at the clone, `settings.json` is written, hook scripts are present
-- [ ] Commit: "test: synthetic eval checks + smoke-test docs"
-- [ ] `git push`
+- [x] Add `checks.${system}.module-all-enabled` derivation that evaluates the HM module under a synthetic home-manager configuration with all options enabled and a fake `inputs.claude-code` stub (or use `installPackage = false` to avoid needing the real package eval)
+- [x] Add `checks.${system}.module-disabled` — with `enable = false`, asserts no `~/.claude/*` writes
+- [x] `nix flake check` passes both
+- [x] Fill in the "Testing" section of `README.md`: clone to scratch dir → point throwaway HM at it → switch → verify symlinks point at the clone, `settings.json` is written, hook scripts are present
+- [x] Commit: "test: synthetic eval checks + smoke-test docs"
+- [x] `git push` (deferred — ralphex working branch; user pushes after review/merge)
 
 ### Task 10: Final review
 

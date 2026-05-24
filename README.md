@@ -48,14 +48,70 @@ See [SECURITY.md](./SECURITY.md) for the leak-rotation procedure.
 
 ## Testing
 
-Placeholder — see Task 9 in the bootstrap plan. The intended flow is:
+Two layers: fast synthetic-eval checks via `nix flake check`, and a manual
+end-to-end smoke test against a throwaway home-manager profile.
 
-1. `git clone` this repo to a scratch directory.
-2. Point a throwaway home-manager configuration at it (`contentRepoPath = ...`).
-3. `home-manager switch`.
-4. Verify `~/.claude/{skills,agents,commands}` symlink into the scratch clone,
-   `~/.claude/settings.json` matches the merged config, and hook scripts are
-   resolvable.
+### `nix flake check`
 
-Per-PR validation runs `nix flake check` (see `checks.${system}` in
-`flake.nix`).
+```sh
+nix flake check
+```
+
+Builds two derivations under `checks.${system}`:
+
+- `module-all-enabled` — evaluates the module against a synthetic
+  `homeManagerConfiguration` with every option turned on (`enable`,
+  `zellijIntegration`, `userClaudeMd`, `extraEnabledPlugins`,
+  `extraKnownMarketplaces`, `extraSettings`); asserts the three
+  symlink sources resolve, all three activation hooks
+  (`claudeSharedClone`, `claudeSettings`, `claudeInstalledPlugins`)
+  are present, the clone script uses the configured HTTPS remote and
+  `contentRepoPath`, and the settings + installed-plugins activations
+  reference the right target files. `installPackage` is left at
+  `false` so the check doesn't depend on the real `claude-code`
+  package evaluating on every system.
+- `module-disabled` — evaluates with `enable = false` and asserts
+  there are no `home.file.".claude/*"` entries and none of our
+  activation hooks fire.
+
+### End-to-end smoke test
+
+1. Clone this repo to a scratch directory:
+   ```sh
+   git clone https://github.com/alexandru-savinov/claude-shared.git /tmp/cs-test
+   ```
+2. Point a throwaway home-manager configuration at it. Minimal `flake.nix`:
+   ```nix
+   {
+     inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+     inputs.home-manager.url = "github:nix-community/home-manager";
+     inputs.home-manager.inputs.nixpkgs.follows = "nixpkgs";
+     inputs.claude-shared.url = "path:/tmp/cs-test";
+
+     outputs = { nixpkgs, home-manager, claude-shared, ... }: {
+       homeConfigurations.smoke = home-manager.lib.homeManagerConfiguration {
+         pkgs = nixpkgs.legacyPackages.aarch64-darwin;
+         modules = [
+           claude-shared.homeManagerModules.default
+           {
+             home.username = "you";
+             home.homeDirectory = "/Users/you";
+             home.stateVersion = "24.05";
+             programs.claude-code.enable = true;
+             programs.claude-code.contentRepoPath = "/tmp/cs-test";
+           }
+         ];
+       };
+     };
+   }
+   ```
+3. `home-manager switch --flake .#smoke` (use a throwaway `$HOME` — see
+   `home-manager`'s docs for `--extra-experimental-features` and
+   `HOME=...` overrides if you want full isolation).
+4. Verify:
+   - `readlink ~/.claude/skills` points at `/tmp/cs-test/content/skills`
+     (same for `agents`, `commands`).
+   - `~/.claude/settings.json` contains the merged config — base options
+     plus `statusLine` + `hooks` when zellij integration is on.
+   - The hook script paths in `settings.json` (`/nix/store/...-claude-*`)
+     exist and reference `jq` / `zellij` from the nix store.
