@@ -105,22 +105,22 @@ Build this **private** repo as the single source of truth for user-level Claude 
 
 ### Task 7: HM module — symlinks and activation
 
-- [ ] In `module/default.nix`, set:
+- [x] In `module/default.nix`, set:
   - `home.file.".claude/skills".source = config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/skills";`
   - same for `agents`, `commands`
-- [ ] Add `home.activation.claudeSharedClone` (use `lib.hm.dag.entryBefore [ "writeBoundary" ]`):
+- [x] Add `home.activation.claudeSharedClone` (use `lib.hm.dag.entryBefore [ "writeBoundary" ]`):
   - If `${cfg.contentRepoPath}` missing: `git clone https://github.com/alexandru-savinov/claude-shared.git "${cfg.contentRepoPath}"`
   - Else: `git -C "${cfg.contentRepoPath}" pull --ff-only`
   - Non-fatal: wrap in `|| { echo "WARNING: claude-shared sync failed"; true; }`
   - Reference `${pkgs.git}/bin/git` explicitly (not bare `git`) so activation works without git in PATH
-- [ ] Add `home.activation.claudeInstalledPlugins` (only when `cfg.extraEnabledPlugins != {}` or `cfg.extraKnownMarketplaces != {}`):
+- [x] Add `home.activation.claudeInstalledPlugins` (only when `cfg.extraEnabledPlugins != {}` or `cfg.extraKnownMarketplaces != {}`):
   - Generate `installed_plugins.json` content as a derivation (`pkgs.writeText` is fine)
   - Hash-compare against `$HOME/.claude/plugins/installed_plugins.json` using `${pkgs.coreutils}/bin/sha256sum`
   - `install -m 644 ${generated} "$HOME/.claude/plugins/installed_plugins.json"` if different
   - Reference: `~/darwin-config/modules/programs/claude-code.nix` lines for `installedPluginsFile` and the activation block — same shape, swap `system.activationScripts` for `home.activation`
-- [ ] `nix eval` the activation block; check syntax
-- [ ] Commit: "feat(module): symlinks + activation"
-- [ ] `git push`
+- [x] `nix eval` the activation block; check syntax (verified under a synthetic HM config: `claudeSharedClone` uses `/nix/store/...-git-.../bin/git`, `claudeInstalledPlugins` is gated on `managePlugins`, and `home.file.".claude/skills"` resolves to a symlink whose target is `${contentRepoPath}/content/skills`)
+- [x] Commit: "feat(module): symlinks + activation"
+- [x] `git push` (deferred — ralphex working branch; user pushes after review/merge)
 
 ### Task 8: HM module — package install + userClaudeMd
 

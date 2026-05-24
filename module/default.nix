@@ -72,6 +72,31 @@ let
   );
 
   settingsFile = pkgs.writeText "claude-settings.json" (builtins.toJSON mergedSettings);
+
+  pluginsDir = "${config.home.homeDirectory}/.claude/plugins";
+
+  installedPluginsContent = {
+    version = 2;
+    plugins = lib.mapAttrs (
+      name: _enabled:
+      let
+        parts = lib.splitString "@" name;
+        marketplace = lib.last parts;
+      in
+      [
+        {
+          scope = "user";
+          installPath = "${pluginsDir}/marketplaces/${marketplace}";
+        }
+      ]
+    ) cfg.extraEnabledPlugins;
+  };
+
+  installedPluginsFile = pkgs.writeText "claude-installed-plugins.json" (
+    builtins.toJSON installedPluginsContent
+  );
+
+  managePlugins = cfg.extraEnabledPlugins != { } || cfg.extraKnownMarketplaces != { };
 in
 {
   # Home-manager ships its own `programs.claude-code` module with a
@@ -147,14 +172,43 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    home.activation.claudeSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      mkdir -p "$HOME/.claude"
-      CC_NEW=$(${pkgs.coreutils}/bin/sha256sum ${settingsFile} | ${pkgs.coreutils}/bin/cut -d" " -f1)
-      CC_CUR=$(${pkgs.coreutils}/bin/sha256sum "$HOME/.claude/settings.json" 2>/dev/null | ${pkgs.coreutils}/bin/cut -d" " -f1 || true)
-      if [ "$CC_NEW" != "$CC_CUR" ]; then
-        install -m 644 ${settingsFile} "$HOME/.claude/settings.json"
-      fi
-    '';
-  };
+  config = lib.mkIf cfg.enable (lib.mkMerge [
+    {
+      home.file.".claude/skills".source =
+        config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/skills";
+      home.file.".claude/agents".source =
+        config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/agents";
+      home.file.".claude/commands".source =
+        config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/commands";
+
+      home.activation.claudeSharedClone = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+        if [ ! -d "${cfg.contentRepoPath}" ]; then
+          ${pkgs.git}/bin/git clone https://github.com/alexandru-savinov/claude-shared.git "${cfg.contentRepoPath}" \
+            || { echo "WARNING: claude-shared clone failed" >&2; true; }
+        else
+          ${pkgs.git}/bin/git -C "${cfg.contentRepoPath}" pull --ff-only \
+            || { echo "WARNING: claude-shared pull failed" >&2; true; }
+        fi
+      '';
+
+      home.activation.claudeSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        mkdir -p "$HOME/.claude"
+        CC_NEW=$(${pkgs.coreutils}/bin/sha256sum ${settingsFile} | ${pkgs.coreutils}/bin/cut -d" " -f1)
+        CC_CUR=$(${pkgs.coreutils}/bin/sha256sum "$HOME/.claude/settings.json" 2>/dev/null | ${pkgs.coreutils}/bin/cut -d" " -f1 || true)
+        if [ "$CC_NEW" != "$CC_CUR" ]; then
+          install -m 644 ${settingsFile} "$HOME/.claude/settings.json"
+        fi
+      '';
+    }
+    (lib.mkIf managePlugins {
+      home.activation.claudeInstalledPlugins = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        mkdir -p "${pluginsDir}"
+        CC_NEW=$(${pkgs.coreutils}/bin/sha256sum ${installedPluginsFile} | ${pkgs.coreutils}/bin/cut -d" " -f1)
+        CC_CUR=$(${pkgs.coreutils}/bin/sha256sum "${pluginsDir}/installed_plugins.json" 2>/dev/null | ${pkgs.coreutils}/bin/cut -d" " -f1 || true)
+        if [ "$CC_NEW" != "$CC_CUR" ]; then
+          install -m 644 ${installedPluginsFile} "${pluginsDir}/installed_plugins.json"
+        fi
+      '';
+    })
+  ]);
 }
