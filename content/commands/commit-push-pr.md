@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(nix fmt:*), Bash(git checkout --branch:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*)
+allowed-tools: Bash(nix fmt:*), Bash(git checkout:*), Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(gh pr create:*)
 description: Format Nix files, commit, push, and create a PR
 ---
 

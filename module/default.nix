@@ -112,6 +112,16 @@ let
   );
 
   managePlugins = cfg.extraEnabledPlugins != { } || cfg.extraKnownMarketplaces != { };
+
+  pluginNameAssertions = lib.mapAttrsToList (name: _: {
+    assertion = builtins.match "[^@]+@[^@]+" name != null;
+    message = ''
+      programs.claude-code.extraEnabledPlugins key "${name}" must be in
+      "plugin@marketplace" format (e.g. "revdiff@revdiff"). Without an `@`,
+      the marketplace cannot be inferred and installed_plugins.json will be
+      misconfigured.
+    '';
+  }) cfg.extraEnabledPlugins;
 in
 {
   # Home-manager ships its own `programs.claude-code` module with a
@@ -222,6 +232,7 @@ in
           '';
         }
         (lib.mkIf managePlugins {
+          assertions = pluginNameAssertions;
           home.activation.claudeInstalledPlugins = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
             mkdir -p "${pluginsDir}"
             CC_NEW=$(${pkgs.coreutils}/bin/sha256sum ${installedPluginsFile} | ${pkgs.coreutils}/bin/cut -d" " -f1)
@@ -243,7 +254,12 @@ in
               '';
             }
           ];
-          home.packages = [ inputs.claude-code.packages.${pkgs.system}.default ];
+          # Use `lib.optional` so a null `inputs` short-circuits to an empty
+          # list; the assertion above surfaces the friendly error instead of
+          # a cryptic "attempt to call something which is not a function".
+          home.packages = lib.optional (
+            inputs != null && inputs ? claude-code
+          ) inputs.claude-code.packages.${pkgs.system}.default;
         })
         (lib.mkIf (cfg.userClaudeMd != null) {
           home.file.".claude/CLAUDE.md".source = cfg.userClaudeMd;

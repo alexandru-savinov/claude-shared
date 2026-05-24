@@ -29,10 +29,24 @@ Anything host-specific or secret belongs in the **consumer repo** via
 and `.direnv/`. Verify before each commit:
 
 ```sh
-git diff --cached | grep -iE 'api[-_]?key|secret|token|password|bearer|BEGIN [A-Z ]*PRIVATE KEY'
+# Excludes PLAN.md and SECURITY.md — they name forbidden patterns as
+# instruction, not as content, and would otherwise self-match.
+git diff --cached -- ':!PLAN.md' ':!SECURITY.md' | grep -iE \
+  'api[-_]?key|secret|token|password|bearer|BEGIN [A-Z ]*PRIVATE KEY|sancta-(choir|claw)|hermes-claw|rpi5(-full)?|zero-kuzea|\.ts\.net|\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'
 ```
 
-If anything matches, **abort the commit** and reset.
+Covered patterns:
+
+- Generic secret-shaped strings (`api key`, `secret`, `token`, `password`,
+  `bearer`, PEM private-key headers)
+- Real hostnames from consumer repos (`sancta-choir`, `sancta-claw`,
+  `hermes-claw`, `rpi5`, `rpi5-full`, `zero-kuzea`) — should be `<host>` in
+  this repo
+- Tailscale magic-DNS suffix (`.ts.net`)
+- Dotted-quad IPv4 addresses (matches every IP; review the hit manually)
+
+If anything matches, **abort the commit** and reset. When you add a new host
+to a consumer repo, extend the regex above.
 
 ## If you suspect a leak
 
