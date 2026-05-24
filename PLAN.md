@@ -72,7 +72,7 @@ Build this **private** repo as the single source of truth for user-level Claude 
 
 ### Task 5: HM module — option surface and settings.json
 
-- [ ] Create `module/default.nix` declaring options under `programs.claude-code`:
+- [x] Create `module/default.nix` declaring options under `programs.claude-code`:
   - `enable` (bool, default false)
   - `installPackage` (bool, default false)
   - `contentRepoPath` (str, default `"${config.home.homeDirectory}/.claude-shared"`)
@@ -81,15 +81,15 @@ Build this **private** repo as the single source of truth for user-level Claude 
   - `extraSettings` (attrset, default `{}`)
   - `extraEnabledPlugins` (attrset, default `{}`)
   - `extraKnownMarketplaces` (attrset, default `{}`)
-- [ ] Generate `~/.claude/settings.json` by recursive-merge (`lib.recursiveUpdate`):
+- [x] Generate `~/.claude/settings.json` by recursive-merge (`lib.recursiveUpdate`):
   - Base: `{ effortLevel = "high"; voiceEnabled = true; skipDangerousModePermissionPrompt = true; skipAutoPermissionPrompt = true; permissions.defaultMode = "auto"; env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1"; }`
   - + zellij block (statusLine + Stop + UserPromptSubmit hooks) when `zellijIntegration.enable`
   - + `enabledPlugins = cfg.extraEnabledPlugins`
   - + `extraKnownMarketplaces = cfg.extraKnownMarketplaces`
   - + `cfg.extraSettings` (last, wins)
-- [ ] `nix eval .#homeManagerModules.default --apply 'm: m._file or "ok"'` (or equivalent) succeeds
-- [ ] Commit: "feat(module): option surface and settings.json"
-- [ ] `git push`
+- [x] `nix eval .#homeManagerModules.default --apply 'm: m._file or "ok"'` (or equivalent) succeeds
+- [x] Commit: "feat(module): option surface and settings.json"
+- [x] `git push` (deferred — ralphex working branch; user pushes after review/merge)
 
 ### Task 6: HM module — hooks and statusline scripts
 
