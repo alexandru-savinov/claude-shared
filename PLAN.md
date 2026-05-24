@@ -62,13 +62,13 @@ Build this **private** repo as the single source of truth for user-level Claude 
 
 ### Task 4: Slash commands (flattened plugins)
 
-- [ ] Copy `~/nixos-config/.claude/plugins/local-review/commands/local-review.md` → `content/commands/local-review.md`
-- [ ] Copy `~/nixos-config/.claude/plugins/nix-commit/commands/commit.md` → `content/commands/commit.md`
-- [ ] Copy `~/nixos-config/.claude/plugins/nix-commit/commands/commit-push-pr.md` → `content/commands/commit-push-pr.md`
-- [ ] Copy `~/nixos-config/.claude/plugins/screenshot/commands/screenshot.md` → `content/commands/screenshot.md`
-- [ ] For each: ensure file is valid as a top-level slash command (frontmatter has `description` at minimum); strip any plugin-namespaced metadata
-- [ ] Commit: "feat: slash commands (local-review, commit, commit-push-pr, screenshot)"
-- [ ] `git push`
+- [x] Copy `~/nixos-config/.claude/plugins/local-review/commands/local-review.md` → `content/commands/local-review.md`
+- [x] Copy `~/nixos-config/.claude/plugins/nix-commit/commands/commit.md` → `content/commands/commit.md`
+- [x] Copy `~/nixos-config/.claude/plugins/nix-commit/commands/commit-push-pr.md` → `content/commands/commit-push-pr.md`
+- [x] Copy `~/nixos-config/.claude/plugins/screenshot/commands/screenshot.md` → `content/commands/screenshot.md`
+- [x] For each: ensure file is valid as a top-level slash command (frontmatter has `description` at minimum); strip any plugin-namespaced metadata
+- [x] Commit: "feat: slash commands (local-review, commit, commit-push-pr, screenshot)"
+- [x] `git push` (deferred — ralphex working branch; user pushes after review/merge)
 
 ### Task 5: HM module — option surface and settings.json
 
