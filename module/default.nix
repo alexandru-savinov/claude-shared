@@ -51,10 +51,24 @@ let
     };
     hooks = {
       Stop = [
-        { hooks = [ { type = "command"; command = "${onStopScript}"; } ]; }
+        {
+          hooks = [
+            {
+              type = "command";
+              command = "${onStopScript}";
+            }
+          ];
+        }
       ];
       UserPromptSubmit = [
-        { hooks = [ { type = "command"; command = "${onUserPromptScript}"; } ]; }
+        {
+          hooks = [
+            {
+              type = "command";
+              command = "${onUserPromptScript}";
+            }
+          ];
+        }
       ];
     };
   };
@@ -178,61 +192,63 @@ in
   # The flake's `homeManagerModules.default` overrides this with the real inputs.
   config = lib.mkMerge [
     { _module.args.inputs = lib.mkDefault null; }
-    (lib.mkIf cfg.enable (lib.mkMerge [
-    {
-      home.file.".claude/skills".source =
-        config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/skills";
-      home.file.".claude/agents".source =
-        config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/agents";
-      home.file.".claude/commands".source =
-        config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/commands";
-
-      home.activation.claudeSharedClone = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
-        if [ ! -d "${cfg.contentRepoPath}" ]; then
-          ${pkgs.git}/bin/git clone https://github.com/alexandru-savinov/claude-shared.git "${cfg.contentRepoPath}" \
-            || { echo "WARNING: claude-shared clone failed" >&2; true; }
-        else
-          ${pkgs.git}/bin/git -C "${cfg.contentRepoPath}" pull --ff-only \
-            || { echo "WARNING: claude-shared pull failed" >&2; true; }
-        fi
-      '';
-
-      home.activation.claudeSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        mkdir -p "$HOME/.claude"
-        CC_NEW=$(${pkgs.coreutils}/bin/sha256sum ${settingsFile} | ${pkgs.coreutils}/bin/cut -d" " -f1)
-        CC_CUR=$(${pkgs.coreutils}/bin/sha256sum "$HOME/.claude/settings.json" 2>/dev/null | ${pkgs.coreutils}/bin/cut -d" " -f1 || true)
-        if [ "$CC_NEW" != "$CC_CUR" ]; then
-          install -m 644 ${settingsFile} "$HOME/.claude/settings.json"
-        fi
-      '';
-    }
-    (lib.mkIf managePlugins {
-      home.activation.claudeInstalledPlugins = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-        mkdir -p "${pluginsDir}"
-        CC_NEW=$(${pkgs.coreutils}/bin/sha256sum ${installedPluginsFile} | ${pkgs.coreutils}/bin/cut -d" " -f1)
-        CC_CUR=$(${pkgs.coreutils}/bin/sha256sum "${pluginsDir}/installed_plugins.json" 2>/dev/null | ${pkgs.coreutils}/bin/cut -d" " -f1 || true)
-        if [ "$CC_NEW" != "$CC_CUR" ]; then
-          install -m 644 ${installedPluginsFile} "${pluginsDir}/installed_plugins.json"
-        fi
-      '';
-    })
-    (lib.mkIf cfg.installPackage {
-      assertions = [
+    (lib.mkIf cfg.enable (
+      lib.mkMerge [
         {
-          assertion = inputs != null && inputs ? claude-code;
-          message = ''
-            programs.claude-code.installPackage = true requires the
-            `claude-code` flake input to be threaded through via
-            `_module.args.inputs`. Import this module via
-            `claude-shared.homeManagerModules.default` from its flake.
+          home.file.".claude/skills".source =
+            config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/skills";
+          home.file.".claude/agents".source =
+            config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/agents";
+          home.file.".claude/commands".source =
+            config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/commands";
+
+          home.activation.claudeSharedClone = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
+            if [ ! -d "${cfg.contentRepoPath}" ]; then
+              ${pkgs.git}/bin/git clone https://github.com/alexandru-savinov/claude-shared.git "${cfg.contentRepoPath}" \
+                || { echo "WARNING: claude-shared clone failed" >&2; true; }
+            else
+              ${pkgs.git}/bin/git -C "${cfg.contentRepoPath}" pull --ff-only \
+                || { echo "WARNING: claude-shared pull failed" >&2; true; }
+            fi
+          '';
+
+          home.activation.claudeSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+            mkdir -p "$HOME/.claude"
+            CC_NEW=$(${pkgs.coreutils}/bin/sha256sum ${settingsFile} | ${pkgs.coreutils}/bin/cut -d" " -f1)
+            CC_CUR=$(${pkgs.coreutils}/bin/sha256sum "$HOME/.claude/settings.json" 2>/dev/null | ${pkgs.coreutils}/bin/cut -d" " -f1 || true)
+            if [ "$CC_NEW" != "$CC_CUR" ]; then
+              install -m 644 ${settingsFile} "$HOME/.claude/settings.json"
+            fi
           '';
         }
-      ];
-      home.packages = [ inputs.claude-code.packages.${pkgs.system}.default ];
-    })
-    (lib.mkIf (cfg.userClaudeMd != null) {
-      home.file.".claude/CLAUDE.md".source = cfg.userClaudeMd;
-    })
-    ]))
+        (lib.mkIf managePlugins {
+          home.activation.claudeInstalledPlugins = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+            mkdir -p "${pluginsDir}"
+            CC_NEW=$(${pkgs.coreutils}/bin/sha256sum ${installedPluginsFile} | ${pkgs.coreutils}/bin/cut -d" " -f1)
+            CC_CUR=$(${pkgs.coreutils}/bin/sha256sum "${pluginsDir}/installed_plugins.json" 2>/dev/null | ${pkgs.coreutils}/bin/cut -d" " -f1 || true)
+            if [ "$CC_NEW" != "$CC_CUR" ]; then
+              install -m 644 ${installedPluginsFile} "${pluginsDir}/installed_plugins.json"
+            fi
+          '';
+        })
+        (lib.mkIf cfg.installPackage {
+          assertions = [
+            {
+              assertion = inputs != null && inputs ? claude-code;
+              message = ''
+                programs.claude-code.installPackage = true requires the
+                `claude-code` flake input to be threaded through via
+                `_module.args.inputs`. Import this module via
+                `claude-shared.homeManagerModules.default` from its flake.
+              '';
+            }
+          ];
+          home.packages = [ inputs.claude-code.packages.${pkgs.system}.default ];
+        })
+        (lib.mkIf (cfg.userClaudeMd != null) {
+          home.file.".claude/CLAUDE.md".source = cfg.userClaudeMd;
+        })
+      ]
+    ))
   ];
 }

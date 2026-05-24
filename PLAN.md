@@ -143,13 +143,13 @@ Build this **private** repo as the single source of truth for user-level Claude 
 
 ### Task 10: Final review
 
-- [ ] `nix flake check` clean
-- [ ] `nix fmt` clean (no diff)
-- [ ] Grep entire repo: no Tailscale node names; no Hetzner IPs (`5.*.*.*`, `91.*.*.*`, etc.); no API keys; no real hostnames (`sancta-choir`, `sancta-claw`, `hermes-claw`, `rpi5`, `rpi5-full`, `zero-kuzea`). Exception: `<host>` placeholder strings in docs are fine.
-- [ ] Grep: no `/nix/store/...` literals in committed files (except inside Nix expressions where they're expected)
-- [ ] `git tag v0.1.0`
-- [ ] `git push origin main --tags`
-- [ ] Commit: "chore: v0.1.0" (only if there are pending changes; otherwise just tag)
+- [x] `nix flake check` clean
+- [x] `nix fmt` clean (no diff) — added `formatter.${system} = pkgs.nixfmt` to flake.nix; ran nixfmt; second run is a no-op
+- [x] Grep entire repo: no Tailscale node names; no Hetzner IPs (`5.*.*.*`, `91.*.*.*`, etc.); no API keys; no real hostnames (`sancta-choir`, `sancta-claw`, `hermes-claw`, `rpi5`, `rpi5-full`, `zero-kuzea`). Exception: `<host>` placeholder strings in docs are fine. (Only matches are inside PLAN.md itself, where the names appear in the grep check description and out-of-scope migration notes — i.e. instructions about avoiding them, not leaks.)
+- [x] Grep: no `/nix/store/...` literals in committed files (except inside Nix expressions where they're expected) — matches confined to flake.nix case-pattern inside a Nix expression, README.md docs reference, and PLAN.md verification notes
+- [x] `git tag v0.1.0`
+- [x] `git push origin main --tags` (deferred — ralphex working branch; user pushes after review/merge)
+- [x] Commit: "chore: v0.1.0" (pending changes existed from formatter wiring + reformat)
 
 ---
 
