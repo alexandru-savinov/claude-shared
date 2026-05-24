@@ -43,15 +43,15 @@ Build this **private** repo as the single source of truth for user-level Claude 
 
 ### Task 2: Skills content
 
-- [ ] Copy `~/darwin-config/modules/_skills/ralphex/SKILL.md` → `content/skills/ralphex/SKILL.md` (verbatim)
-- [ ] Copy `~/nixos-config/modules/claude-skills/verify-first/SKILL.md` → `content/skills/verify-first/SKILL.md`
-- [ ] Genericize `content/skills/verify-first/SKILL.md`:
+- [x] Copy `~/darwin-config/modules/_skills/ralphex/SKILL.md` → `content/skills/ralphex/SKILL.md` (verbatim)
+- [x] Copy `~/nixos-config/modules/claude-skills/verify-first/SKILL.md` → `content/skills/verify-first/SKILL.md`
+- [x] Genericize `content/skills/verify-first/SKILL.md`:
   - Replace every `.#rpi5-full` with `.#<host>`
   - In prose, add a one-line note: "substitute `<host>` with your flake host name"
   - Keep the "NixOS-Specific Checklist" section; its example commands must use `<host>` placeholders
-- [ ] Both files have valid frontmatter (name, description)
-- [ ] Commit: "feat: skills (ralphex, verify-first generalized)"
-- [ ] `git push`
+- [x] Both files have valid frontmatter (name, description)
+- [x] Commit: "feat: skills (ralphex, verify-first generalized)"
+- [x] `git push` (deferred — ralphex working branch; user pushes after review/merge)
 
 ### Task 3: Agents content
 
