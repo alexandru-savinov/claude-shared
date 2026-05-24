@@ -55,10 +55,10 @@ Build this **private** repo as the single source of truth for user-level Claude 
 
 ### Task 3: Agents content
 
-- [ ] Copy `~/nixos-config/modules/claude-agents/nix-security-reviewer.md` → `content/agents/nix-security-reviewer.md` (verbatim)
-- [ ] Frontmatter is valid (name, description)
-- [ ] Commit: "feat: agent (nix-security-reviewer)"
-- [ ] `git push`
+- [x] Copy `~/nixos-config/modules/claude-agents/nix-security-reviewer.md` → `content/agents/nix-security-reviewer.md` (verbatim)
+- [x] Frontmatter is valid (name, description)
+- [x] Commit: "feat: agent (nix-security-reviewer)"
+- [x] `git push` (deferred — ralphex working branch; user pushes after review/merge)
 
 ### Task 4: Slash commands (flattened plugins)
 
