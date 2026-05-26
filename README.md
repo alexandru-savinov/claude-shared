@@ -27,9 +27,61 @@ distributed as a Nix flake. This repo is the single source of truth for content
 Both add this repo as a flake input and import
 `inputs.claude-shared.homeManagerModules.default`.
 
+## How to make changes
+
+There is **one canonical local clone per machine**: `~/.claude-shared/`. The
+home-manager activation script clones it on first rebuild and `git pull
+--ff-only`s it on every subsequent rebuild. Symlinks under `~/.claude/`
+point into this checkout, so edits are immediately visible to Claude Code
+without any rebuild.
+
+```sh
+cd ~/.claude-shared       # canonical clone — symlinks resolve here
+$EDITOR content/skills/X/SKILL.md
+git add . && git commit -m "feat: ..." && git push
+```
+
+### When a rebuild is needed
+
+| Action | Rebuild? | Why |
+|--------|----------|-----|
+| Edit existing file content | ❌ `git pull` on each host suffices | symlinks already in place |
+| Add a new skill / agent / command | ✅ `nix flake update claude-shared` + rebuild on each host | symlink set is enumerated at eval time via `builtins.readDir` |
+| Remove a file | ✅ same as above | orphan symlinks otherwise |
+| Change `module/default.nix` (option surface, settings.json shape, hooks, activation logic) | ✅ same as above | the module itself is in the lock |
+
+### Propagating to other hosts
+
+After `git push`, other machines pick up changes via:
+
+- **Manual fast path (content edits only):** `ssh <host> 'cd ~/.claude-shared && git pull'` — no rebuild needed, symlinks already point here.
+- **Declarative path (new files or module changes):** bump lock and rebuild:
+  ```sh
+  # on each consumer
+  cd ~/<consumer>-config
+  nix flake update claude-shared
+  sudo <darwin|nixos>-rebuild switch --flake .#<host>
+  # the activation script also runs `git -C ~/.claude-shared pull --ff-only`,
+  # so this is a one-step way to do both
+  ```
+
+### One-shot bootstrap on a brand-new machine
+
+```sh
+git clone https://github.com/alexandru-savinov/claude-shared.git ~/.claude-shared
+# then add this repo as a flake input in the consumer config and switch
+```
+
+The activation script also clones it automatically if the directory is missing,
+but the clone happens *before* `writeBoundary`, which means the user's git
+credential helper may not be set up yet on first boot. Pre-cloning sidesteps
+the chicken-and-egg.
+
 ## What's safe to put here
 
-This repo is **private**, but treat it as if it could leak. Do **not** commit:
+This repo is **public** (was private during initial design; flipped to public
+so multi-host consumers don't need per-host GitHub auth). Treat it as
+permanently world-readable. Do **not** commit:
 
 - Hostnames or Tailscale node names
 - Public or private IPs
