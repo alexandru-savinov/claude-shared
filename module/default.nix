@@ -122,6 +122,32 @@ let
       misconfigured.
     '';
   }) cfg.extraEnabledPlugins;
+
+  # Granular per-item symlinks: enumerate skills/agents/commands at eval
+  # time from the flake's own source tree, then create one mkOutOfStoreSymlink
+  # per entry. This lets other HM modules contribute their own files into
+  # ~/.claude/skills/, ~/.claude/agents/, ~/.claude/commands/ without
+  # colliding with a whole-directory symlink.
+  contentSrc = ./../content;
+
+  dirNames =
+    sub:
+    lib.attrNames (lib.filterAttrs (_: t: t == "directory") (builtins.readDir "${contentSrc}/${sub}"));
+
+  fileNames =
+    sub:
+    lib.attrNames (lib.filterAttrs (_: t: t == "regular") (builtins.readDir "${contentSrc}/${sub}"));
+
+  mkSymlinkEntry = subdir: name: {
+    name = ".claude/${subdir}/${name}";
+    value.source = config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/${subdir}/${name}";
+  };
+
+  contentSymlinks = builtins.listToAttrs (
+    (map (mkSymlinkEntry "skills") (dirNames "skills"))
+    ++ (map (mkSymlinkEntry "agents") (fileNames "agents"))
+    ++ (map (mkSymlinkEntry "commands") (fileNames "commands"))
+  );
 in
 {
   # Home-manager ships its own `programs.claude-code` module with a
@@ -205,12 +231,7 @@ in
     (lib.mkIf cfg.enable (
       lib.mkMerge [
         {
-          home.file.".claude/skills".source =
-            config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/skills";
-          home.file.".claude/agents".source =
-            config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/agents";
-          home.file.".claude/commands".source =
-            config.lib.file.mkOutOfStoreSymlink "${cfg.contentRepoPath}/content/commands";
+          home.file = contentSymlinks;
 
           home.activation.claudeSharedClone = lib.hm.dag.entryBefore [ "writeBoundary" ] ''
             if [ ! -d "${cfg.contentRepoPath}" ]; then

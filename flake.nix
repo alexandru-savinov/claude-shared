@@ -88,10 +88,19 @@
           module-all-enabled =
             pkgs.runCommand "module-all-enabled"
               {
-                skillsSource = toString allEnabled.config.home.file.".claude/skills".source;
-                agentsSource = toString allEnabled.config.home.file.".claude/agents".source;
-                commandsSource = toString allEnabled.config.home.file.".claude/commands".source;
+                # Granular per-item symlinks: assert each expected entry is
+                # present under home.file as an out-of-store symlink derivation.
+                ralphexSource = toString allEnabled.config.home.file.".claude/skills/ralphex".source;
+                verifyFirstSource = toString allEnabled.config.home.file.".claude/skills/verify-first".source;
+                agentSource = toString allEnabled.config.home.file.".claude/agents/nix-security-reviewer.md".source;
+                commitCmdSource = toString allEnabled.config.home.file.".claude/commands/commit.md".source;
+                commitPushPrSource =
+                  toString
+                    allEnabled.config.home.file.".claude/commands/commit-push-pr.md".source;
+                localReviewSource = toString allEnabled.config.home.file.".claude/commands/local-review.md".source;
+                screenshotSource = toString allEnabled.config.home.file.".claude/commands/screenshot.md".source;
                 claudeMdSource = toString allEnabled.config.home.file.".claude/CLAUDE.md".source;
+                homeFileKeys = lib.concatStringsSep " " (lib.attrNames allEnabled.config.home.file);
                 activationKeys = lib.concatStringsSep " " (lib.attrNames allEnabled.config.home.activation);
                 cloneScript = allEnabled.config.home.activation.claudeSharedClone.data;
                 settingsScript = allEnabled.config.home.activation.claudeSettings.data;
@@ -99,11 +108,32 @@
               }
               ''
                 set -eu
-                echo "skills source:  $skillsSource"
-                echo "agents source:  $agentsSource"
-                echo "commands source: $commandsSource"
+                echo "home.file keys:  $homeFileKeys"
+                echo "ralphex source:  $ralphexSource"
+                echo "agent source:    $agentSource"
+                echo "commit source:   $commitCmdSource"
                 echo "CLAUDE.md source: $claudeMdSource"
                 echo "activation keys: $activationKeys"
+
+                # No whole-directory symlinks for skills/agents/commands —
+                # only per-item entries. Catch accidental regression.
+                for k in $homeFileKeys; do
+                  case "$k" in
+                    .claude/skills|.claude/agents|.claude/commands)
+                      echo "FAIL: whole-directory symlink at $k (must be granular)"; exit 1 ;;
+                  esac
+                done
+
+                # Each per-item symlink source must be an out-of-store mkOutOfStoreSymlink
+                # derivation (lives under /nix/store and resolves to contentRepoPath).
+                for src in "$ralphexSource" "$verifyFirstSource" "$agentSource" \
+                           "$commitCmdSource" "$commitPushPrSource" \
+                           "$localReviewSource" "$screenshotSource"; do
+                  case "$src" in
+                    /nix/store/*) ;;
+                    *) echo "FAIL: expected /nix/store path for $src"; exit 1 ;;
+                  esac
+                done
 
                 # All three of our activation hooks must be present.
                 for k in claudeSharedClone claudeSettings claudeInstalledPlugins; do
