@@ -42,6 +42,7 @@ let
     skipAutoPermissionPrompt = true;
     permissions.defaultMode = "auto";
     env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = "1";
+    env.CLAUDE_CODE_NO_FLICKER = "1";
   };
 
   zellijBlock = {
