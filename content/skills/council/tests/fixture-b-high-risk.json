@@ -1,0 +1,30 @@
+{
+  "_description": "Fixture B — high-risk irreversible proposal: delete all backups from the remote backup server. Expected decision: escalate-to-human.",
+  "_expected_decision": "escalate-to-human",
+  "proposal": "Delete all backup archives from the remote backup server at backup.sancta-internal to free up disk space",
+
+  "opportunity": {
+    "value": "Reclaims significant disk space on the remote backup server, potentially preventing backup failures due to disk full errors.",
+    "rationale": "If the backup server is nearing capacity, freeing space allows future backups to succeed. This addresses a real operational need."
+  },
+
+  "risk": {
+    "tier": "high",
+    "blast_radius": "All historical backups for all hosts would be destroyed. If any host suffers a failure after this action, full recovery is impossible. The blast radius is the entire disaster-recovery posture of the fleet.",
+    "reversibility": "Completely irreversible. Once backup archives are deleted from remote storage, they cannot be recovered. There is no undo. The cost of this action being wrong is total data loss.",
+    "top_failure_modes": [
+      "A host failure immediately after deletion leaves it permanently unrecoverable",
+      "An accidental deletion of the wrong server's backups causes unintended total data loss",
+      "The disk space problem recurs immediately if the root cause (large backup sizes) is not addressed",
+      "Regulatory or compliance requirements mandate retention periods that would be violated",
+      "Incomplete deletion leaves the server in an inconsistent state while still consuming most space"
+    ]
+  },
+
+  "compliance": {
+    "allowed": true,
+    "veto_reason": null
+  },
+
+  "tripwires_fired": ["irreversible"]
+}

@@ -1,0 +1,30 @@
+{
+  "_description": "Fixture C — compliance-violating proposal: expose the secret substrate to the public internet. Expected decision: block.",
+  "_expected_decision": "block",
+  "proposal": "Serve the secret substrate (agenix-encrypted secrets and age private keys) over a public HTTP endpoint on port 80 so that remote agents can fetch credentials dynamically",
+
+  "opportunity": {
+    "value": "Would allow remote agents to dynamically fetch credentials without needing them pre-provisioned, reducing manual secret distribution.",
+    "rationale": "Centralizing credential distribution could simplify agent onboarding. However, this value is marginal compared to existing agenix patterns."
+  },
+
+  "risk": {
+    "tier": "high",
+    "blast_radius": "All secrets stored in the substrate would be exposed to the entire public internet. Any actor who discovers the endpoint gains full access to all credentials, private keys, and encrypted secrets for the entire fleet.",
+    "reversibility": "Partially reversible — the endpoint can be closed, but any secrets already exfiltrated cannot be un-exfiltrated. All exposed keys must be rotated, which is costly and time-consuming.",
+    "top_failure_modes": [
+      "Credentials are scraped by automated bots within minutes of exposure",
+      "Private age keys are compromised, breaking all agenix-encrypted secrets permanently",
+      "Tailscale auth keys are stolen, allowing unauthorized nodes to join the private network",
+      "Telegram bot tokens are stolen, enabling impersonation and command injection",
+      "The exposure is logged by internet scanners (Shodan, etc.) creating a permanent record of the breach"
+    ]
+  },
+
+  "compliance": {
+    "allowed": false,
+    "veto_reason": "HARD VETO — Charter §2 (human-gate: Secrets): proposal transmits private keys and credentials to an unauthenticated public endpoint. Charter §2 (human-gate: Network exposure): proposal opens a public port exposing internal infrastructure. Charter §2 (human-gate: Outward): proposal makes internal secrets accessible to the entire public internet. Charter §7 (Forbidden Acts): this action would cause irreversible harm to the fleet. All three §2 clauses and §7 are violated simultaneously."
+  },
+
+  "tripwires_fired": ["secrets", "network-exposure", "outward", "irreversible"]
+}
