@@ -19,11 +19,11 @@ Single source of truth henceforth: the /loop pulls from backlog.jsonl, /dream wr
 ## Tasks
 
 ### Task 1: Schema, gather, normalize, and the pre-count baseline
-- [ ] Write `~/.claude/index/backlog.schema.md` documenting the schema above.
-- [ ] Read all four sources; extract EVERY backlog / TODO / parked / open-loop / pending-task item verbatim, each tagged with its source file + location.
-- [ ] Normalize each extracted item into the schema (draft, pre-dedupe), recording its origin in `source[]`.
-- [ ] Record a baseline manifest `~/.claude/index/.backlog-precount.json`: the full list of pre-consolidation items per source + counts. This is the input to the Task 5 no-loss gate.
-- [ ] Check: the manifest lists every item found; print the per-source counts.
+- [x] Write `~/.claude/index/backlog.schema.md` documenting the schema above.
+- [x] Read all four sources; extract EVERY backlog / TODO / parked / open-loop / pending-task item verbatim, each tagged with its source file + location.
+- [x] Normalize each extracted item into the schema (draft, pre-dedupe), recording its origin in `source[]`.
+- [x] Record a baseline manifest `~/.claude/index/.backlog-precount.json`: the full list of pre-consolidation items per source + counts. This is the input to the Task 5 no-loss gate.
+- [x] Check: the manifest lists every item found; print the per-source counts. (32 items: orchestrator 11, dreams 7, compact 11, memories 3; all unique, manifest parses.)
 
 ### Task 2: Dedupe and triage
 - [ ] Merge overlapping items across sources (union; keep the richest description; record ALL origins in `source[]`).
