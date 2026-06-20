@@ -31,10 +31,10 @@ Single source of truth henceforth: the /loop pulls from backlog.jsonl, /dream wr
 - [x] Check: assert every Task-1 manifest item maps to exactly one merged entry (kept or dropped) — print a mapping table (original → entry id → status). (`.backlog-dedup-check.mjs` PASS: all 32 map to exactly one of 22 entries; zero silent loss; no duplicate/stray mappings; schema sane.)
 
 ### Task 3: Write the canonical backlog + rendered view
-- [ ] Write `~/.claude/index/backlog.jsonl` — the canonical store, one schema object per line.
-- [ ] Write a pure-node, dependency-free renderer `~/.claude/index/render-backlog.mjs` that regenerates the human view from backlog.jsonl (so the view can never drift from canonical).
-- [ ] Run it to produce `~/.claude/index/BACKLOG.md` — grouped by trigger (now / when / someday) then tier; the `dropped` items in a collapsed "Archived (with reason)" section at the bottom.
-- [ ] Check: backlog.jsonl parses line-by-line; every entry has all required fields incl. a non-empty `trigger`; BACKLOG.md regenerates cleanly.
+- [x] Write `~/.claude/index/backlog.jsonl` — the canonical store, one schema object per line. (22 entries generated deterministically from `.backlog-dedup.json` with the 10 schema fields in canonical order; 2 now, 13 when, 7 someday.)
+- [x] Write a pure-node, dependency-free renderer `~/.claude/index/render-backlog.mjs` that regenerates the human view from backlog.jsonl (so the view can never drift from canonical). (No deps; deterministic — items sorted by tier then id, byte-stable. `--check` flag prints to stdout for the verify gate.)
+- [x] Run it to produce `~/.claude/index/BACKLOG.md` — grouped by trigger (now / when / someday) then tier; the `dropped` items in a collapsed "Archived (with reason)" section at the bottom. (Rendered; 0 dropped so Archived `<details>` shows none.)
+- [x] Check: backlog.jsonl parses line-by-line; every entry has all required fields incl. a non-empty `trigger`; BACKLOG.md regenerates cleanly. (PASS: 22 lines parse, 22 unique ids, all 10 required fields present, every trigger non-empty, tiers/statuses valid; `render-backlog.mjs --check | diff - BACKLOG.md` byte-identical.)
 
 ### Task 4: Rewire the four sources to defer to the one
 - [ ] `orchestrator/config.json`: replace its inline backlog with a reference such that the /loop TICK reads its queue from `~/.claude/index/backlog.jsonl` (filter to actionable items). Do NOT break the existing TICK contract — read TICK.md first.
