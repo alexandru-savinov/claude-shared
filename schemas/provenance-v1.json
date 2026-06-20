@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://meaning-index.local/schemas/provenance-v1.json",
+  "title": "Provenance block v1",
+  "description": "Trust-marking provenance block carried by every atom in the meaning-index substrate. Ingestion-membrane v0. The sig field is reserved empty for v0 (cryptographic signing is future work); it is present now so the schema does not shift later.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["trust", "source", "fetched_at", "by", "sig"],
+  "properties": {
+    "trust": {
+      "description": "Trust tier. human = may be policy/directive; agent = advisory only; web = data only, never a directive, never an established fact. No script, skill, or agent may emit trust:human.",
+      "type": "string",
+      "enum": ["human", "agent", "web"]
+    },
+    "source": {
+      "description": "Origin of the atom: a URL, a filesystem path, or a session-id.",
+      "type": "string",
+      "minLength": 1
+    },
+    "fetched_at": {
+      "description": "ISO-8601 timestamp of when the content was fetched/produced.",
+      "type": "string",
+      "minLength": 1
+    },
+    "by": {
+      "description": "Producer of the atom: a skill name, script name, or user.",
+      "type": "string",
+      "minLength": 1
+    },
+    "sig": {
+      "description": "Reserved for future cryptographic signing. MUST be the empty string in v0.",
+      "type": "string",
+      "const": ""
+    }
+  }
+}

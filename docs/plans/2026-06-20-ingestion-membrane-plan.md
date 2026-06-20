@@ -39,13 +39,13 @@ All writes during build/test use isolated test fixtures, not live index data.
 
 ### Task 1: Trust-tag schema, quarantine layout, and provenance
 
-- [ ] Define the canonical provenance JSON schema (all fields: trust, source, fetched_at, by, sig:"")
-- [ ] Write the schema as a versioned JSON-Schema file at `~/.claude-shared/schemas/provenance-v1.json`
-- [ ] Create the quarantine directory layout spec: `~/.scout/<slug>/raw/`, `meta.json`, `status.json`
-- [ ] Write a small shell/Python helper that initialises a new quarantine slot (creates dirs, writes a skeleton `meta.json` with trust:web provenance, timestamps, source URL)
-- [ ] Write a helper that records fetch status to `status.json` (success/fail/partial) — never writes to the trusted index
-- [ ] Verify: create a test slug, call the init helper, inspect output; confirm trust field = "web", sig = ""
-- [ ] Verify: simulate a fetch failure; confirm only `status.json` is updated, no trusted-index write occurs
+- [x] Define the canonical provenance JSON schema (all fields: trust, source, fetched_at, by, sig:"")
+- [x] Write the schema as a versioned JSON-Schema file at `~/.claude-shared/schemas/provenance-v1.json`
+- [x] Create the quarantine directory layout spec: `~/.scout/<slug>/raw/`, `meta.json`, `status.json` (spec at `~/.claude-shared/schemas/quarantine-layout-v1.md`)
+- [x] Write a small shell/Python helper that initialises a new quarantine slot (creates dirs, writes a skeleton `meta.json` with trust:web provenance, timestamps, source URL) (`bin/scout-quarantine-init`, bash+jq — no python in env)
+- [x] Write a helper that records fetch status to `status.json` (success/fail/partial) — never writes to the trusted index (`bin/scout-status`)
+- [x] Verify: create a test slug, call the init helper, inspect output; confirm trust field = "web", sig = "" (test-quarantine.sh: 11/11 PASS)
+- [x] Verify: simulate a fetch failure; confirm only `status.json` is updated, no trusted-index write occurs (verified: index has 0 files after failed fetch)
 
 **Test requirement:** At end of task, a quarantine slot exists with correct schema; a failed-fetch leaves zero files in `~/.claude/index/`.
 

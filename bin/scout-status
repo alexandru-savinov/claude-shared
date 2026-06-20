@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Record a fetch outcome to a quarantine slot's status.json.
+#
+# Writes ONLY status.json inside ~/.scout/<slug>/. Never writes to the trusted
+# index — a failed or partial fetch leaves the index completely untouched.
+# Fail-closed: errors exit non-zero.
+#
+# Usage:
+#   scout-status <slug> --outcome success|partial|fail|pending [--detail <text>] [--at <iso8601>]
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=membrane_paths.sh
+. "$DIR/membrane_paths.sh"
+
+usage() { echo "usage: scout-status <slug> --outcome success|partial|fail|pending [--detail <text>] [--at <iso8601>]" >&2; exit 2; }
+
+[ $# -ge 1 ] || usage
+SLUG="$1"; shift
+OUTCOME=""; DETAIL=""; AT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --outcome) OUTCOME="${2:-}"; shift 2 ;;
+    --detail)  DETAIL="${2:-}"; shift 2 ;;
+    --at)      AT="${2:-}"; shift 2 ;;
+    *) echo "error: unknown arg $1" >&2; usage ;;
+  esac
+done
+
+case "$OUTCOME" in
+  success|partial|fail|pending) ;;
+  *) echo "error: --outcome must be success|partial|fail|pending" >&2; exit 2 ;;
+esac
+membrane_valid_slug "$SLUG" || { echo "error: invalid slug '$SLUG'" >&2; exit 2; }
+[ -n "$AT" ] || AT="$(membrane_iso_now)"
+
+SLOT="$(membrane_slot_dir "$SLUG")"
+STATUS="$SLOT/status.json"
+INDEX="$(membrane_index_root)"
+
+[ -d "$SLOT" ] || { echo "error: quarantine slot '$SLUG' not initialised" >&2; exit 1; }
+
+# Preserve prior status as history (tolerate missing/corrupt file).
+if [ -f "$STATUS" ] && jq -e . "$STATUS" >/dev/null 2>&1; then
+  jq \
+    --arg outcome "$OUTCOME" \
+    --arg detail "$DETAIL" \
+    --arg at "$AT" \
+    '{slug:.slug, outcome:$outcome, detail:$detail, updated_at:$at,
+      history: (((.history // [])
+        + (if (.outcome // "pending") != "pending"
+           then [{outcome:.outcome, detail:(.detail // ""), at:(.updated_at // "")}]
+           else [] end)))}' \
+    "$STATUS" > "$STATUS.tmp"
+else
+  jq -n --arg slug "$SLUG" --arg outcome "$OUTCOME" --arg detail "$DETAIL" --arg at "$AT" \
+    '{slug:$slug, outcome:$outcome, detail:$detail, updated_at:$at, history:[]}' \
+    > "$STATUS.tmp"
+fi
+mv "$STATUS.tmp" "$STATUS"
+
+# Defense-in-depth: confirm we only touched the quarantine slot.
+case "$(cd "$SLOT" && pwd -P)/" in
+  "$(cd "$INDEX" 2>/dev/null && pwd -P)/"*)
+    echo "refusing: status path resolved inside the trusted index" >&2; exit 1 ;;
+esac
+
+echo "$STATUS"

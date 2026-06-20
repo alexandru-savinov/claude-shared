@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Initialise a new quarantine slot for the ingestion membrane.
+#
+# Creates ~/.scout/<slug>/ (raw/, meta.json, status.json) with a trust:web
+# provenance block. Writes ONLY inside the quarantine; never touches the trusted
+# index. Fail-closed: any error exits non-zero.
+#
+# Usage:
+#   scout-quarantine-init <slug> --source <url> [--by <producer>] [--at <iso8601>]
+#
+# Prints the slot directory path on success.
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=membrane_paths.sh
+. "$DIR/membrane_paths.sh"
+
+usage() { echo "usage: scout-quarantine-init <slug> --source <url> [--by <producer>] [--at <iso8601>]" >&2; exit 2; }
+
+[ $# -ge 1 ] || usage
+SLUG="$1"; shift
+SOURCE=""; BY="scout"; AT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --source) SOURCE="${2:-}"; shift 2 ;;
+    --by)     BY="${2:-}"; shift 2 ;;
+    --at)     AT="${2:-}"; shift 2 ;;
+    *) echo "error: unknown arg $1" >&2; usage ;;
+  esac
+done
+
+[ -n "$SOURCE" ] || { echo "error: --source is required" >&2; exit 2; }
+membrane_valid_slug "$SLUG" || { echo "error: invalid slug '$SLUG'" >&2; exit 2; }
+[ -n "$AT" ] || AT="$(membrane_iso_now)"
+
+SLOT="$(membrane_slot_dir "$SLUG")"
+INDEX="$(membrane_index_root)"
+
+mkdir -p "$SLOT/raw"
+
+# Provenance block — trust:web, sig reserved empty (provenance-v1.json).
+jq -n \
+  --arg source "$SOURCE" \
+  --arg fetched_at "$AT" \
+  --arg by "$BY" \
+  '{trust:"web", source:$source, fetched_at:$fetched_at, by:$by, sig:""}' \
+  > "$SLOT/meta.json"
+
+jq -n \
+  --arg slug "$SLUG" \
+  --arg at "$AT" \
+  '{slug:$slug, outcome:"pending", detail:"slot initialised", updated_at:$at, history:[]}' \
+  > "$SLOT/status.json"
+
+# Defense-in-depth: refuse if the slot somehow resolved inside the trusted index.
+case "$(cd "$SLOT" && pwd -P)/" in
+  "$(cd "$INDEX" 2>/dev/null && pwd -P)/"*)
+    echo "refusing: quarantine slot resolved inside the trusted index" >&2; exit 1 ;;
+esac
+
+echo "$SLOT"
