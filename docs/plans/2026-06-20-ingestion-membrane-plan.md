@@ -78,15 +78,15 @@ All writes during build/test use isolated test fixtures, not live index data.
 
 ### Task 3: Rewire /scout to deposit only the owned synthesis via the deposit script
 
-- [ ] Read current `/home/nixos/.claude-shared/content/skills/scout/SKILL.md` and `scripts/` to understand existing deposit path
-- [ ] Identify where `/scout` currently writes to the trusted index (or does direct deposits)
-- [ ] Modify the scout workflow:
-  - [ ] Phase 1 (fetch): writes raw content to quarantine only (`~/.scout/<slug>/raw/`, trust:web meta)
-  - [ ] Phase 2 (synthesise): reads from quarantine, produces an owned synthesis with citations
-  - [ ] Phase 3 (deposit): pipes synthesis JSON through `deposit-atom` script; script handles index write
-  - [ ] Raw content must NOT appear in the synthesis atom's `content` field verbatim — summary/synthesis only with citations
-- [ ] Update `SKILL.md` to describe the new two-phase flow
-- [ ] Dry-run test: invoke scout in a test mode (against a known benign URL), confirm quarantine gets raw content, trusted index gets only synthesis atom, raw content not present in index atom
+- [x] Read current `/home/nixos/.claude-shared/content/skills/scout/SKILL.md` and `scripts/` to understand existing deposit path
+- [x] Identify where `/scout` currently writes to the trusted index (or does direct deposits) (close-session.sh wrote moment + index.jsonl directly; synthesis atom now routed through the gate)
+- [x] Modify the scout workflow:
+  - [x] Phase 1 (fetch): writes raw content to quarantine only (`~/.scout/<slug>/raw/`, trust:web meta) (`scripts/scout-fetch.sh`)
+  - [x] Phase 2 (synthesise): reads from quarantine, produces an owned synthesis with citations (agent voice; provenance pulled from quarantine meta only)
+  - [x] Phase 3 (deposit): pipes synthesis JSON through `deposit-atom` script; script handles index write (`scripts/scout-deposit.sh` → `bin/deposit-atom`)
+  - [x] Raw content must NOT appear in the synthesis atom's `content` field verbatim — summary/synthesis only with citations (no-leak test: raw marker absent from index)
+- [x] Update `SKILL.md` to describe the new two-phase flow (Guardrail 6, Step 2b, Step 4-gate, file layout)
+- [x] Dry-run test: invoke scout in a test mode (against a known benign URL), confirm quarantine gets raw content, trusted index gets only synthesis atom, raw content not present in index atom (`tests/membrane/test-scout-rewire.sh`: 7/7 PASS)
 
 **Test requirement:** After a test scout run, quarantine contains raw fetch; trusted index contains only synthesis atom with citations; no raw URL content verbatim in the index atom.
 
