@@ -53,24 +53,24 @@ All writes during build/test use isolated test fixtures, not live index data.
 
 ### Task 2: Fixed-schema fail-closed deposit script and its unit tests
 
-- [ ] Write the deposit script at `~/.claude-shared/bin/deposit-atom` (bash or Python)
-- [ ] Script reads a candidate synthesis atom from stdin (JSON)
-- [ ] Schema validation: required fields = {trust, source, fetched_at, by, sig, content, citations[]}
-- [ ] Hard rejection rules (fail-closed — exit non-zero, write nothing):
+- [x] Write the deposit script at `~/.claude-shared/bin/deposit-atom` (bash or Python) (bash+jq — no python in env)
+- [x] Script reads a candidate synthesis atom from stdin (JSON)
+- [x] Schema validation: required fields = {trust, source, fetched_at, by, sig, content, citations[]} (exact key set; sig must be "")
+- [x] Hard rejection rules (fail-closed — exit non-zero, write nothing):
   - `trust` field is anything other than "agent" → reject
-  - `content` contains directive patterns (imperative sentences asserting policy: "do X", "always Y", "set Z") → reject
+  - `content` contains directive patterns (imperative sentences asserting policy: "do X", "always Y", "set Z") → reject (quoted source material is exempt — only the atom's own voice is checked)
   - `citations` is empty or missing → reject
   - Any extra field not in the fixed schema → reject
-- [ ] On valid input: write atom to `~/.claude/index/<slug>-synthesis.json` (or configurable path)
-- [ ] Write unit tests as a test script at `~/.claude-shared/tests/membrane/test-deposit.sh` (or .py):
-  - [ ] Test: valid agent atom with citations → accepted, file written
-  - [ ] Test: trust:"human" → rejected, no file written
-  - [ ] Test: trust:"web" → rejected, no file written
-  - [ ] Test: missing citations → rejected
-  - [ ] Test: directive content → rejected
-  - [ ] Test: malformed JSON → rejected
-  - [ ] Test: extra unknown field → rejected
-- [ ] All tests pass (exit 0 for suite)
+- [x] On valid input: write atom to `~/.claude/index/<slug>-synthesis.json` (or configurable path) (`--slug` → index dir via CLAUDE_INDEX_DIR; or `--out <path>`)
+- [x] Write unit tests as a test script at `~/.claude-shared/tests/membrane/test-deposit.sh` (or .py):
+  - [x] Test: valid agent atom with citations → accepted, file written
+  - [x] Test: trust:"human" → rejected, no file written
+  - [x] Test: trust:"web" → rejected, no file written
+  - [x] Test: missing citations → rejected (plus empty-array case)
+  - [x] Test: directive content → rejected (plus quoted-hostile-accepted case)
+  - [x] Test: malformed JSON → rejected
+  - [x] Test: extra unknown field → rejected
+- [x] All tests pass (exit 0 for suite) (test-deposit.sh: 9/9 PASS)
 
 **Test requirement:** The full unit test suite passes. The "trust:human" and "directive content" rejection tests are individually named and must pass.
 

@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# Fixed-schema, fail-closed deposit gate for the ingestion membrane.
+#
+# Reads ONE candidate synthesis atom from stdin as JSON. Validates it against a
+# fixed schema and a set of hard rejection rules. On success, writes the atom to
+# the trusted index as <index>/<slug>-synthesis.json (or a --out path). On ANY
+# ambiguity, schema violation, malformed input, or rejection rule, it writes
+# NOTHING and exits non-zero.
+#
+# The atom schema (exactly these seven fields, no more, no less):
+#   trust       MUST be "agent"   — no script/skill/agent may deposit trust:human
+#   source      non-empty string
+#   fetched_at  non-empty string  (ISO-8601)
+#   by          non-empty string
+#   sig         MUST be ""        (reserved, provenance-v1.json)
+#   content     non-empty string  (the OWNED synthesis, not raw web verbatim)
+#   citations   non-empty array
+#
+# Hard rejection rules (fail-closed — exit non-zero, write nothing):
+#   - trust != "agent"
+#   - citations missing or empty
+#   - any field outside the fixed schema (extra unknown field)
+#   - any required field missing
+#   - content contains an UNQUOTED imperative policy directive
+#     ("do X", "always Y", "never Z", "set W to ...", "you must ...")
+#   - malformed JSON / not an object
+#
+# Directive detection ignores text inside double quotes: a synthesis may QUOTE a
+# hostile/injected source (that is data the agent is reporting on), but it may not
+# assert a directive in its own voice.
+#
+# Purity: reads stdin, writes at most one file, exits. No network, no spawning,
+# no environment mutation. Never writes anywhere but the resolved output file.
+#
+# Usage:
+#   deposit-atom --slug <slug> < atom.json
+#   deposit-atom --out <path>  < atom.json
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=membrane_paths.sh
+. "$DIR/membrane_paths.sh"
+
+usage() { echo "usage: deposit-atom (--slug <slug> | --out <path>) < atom.json" >&2; exit 2; }
+reject() { echo "REJECT: $1" >&2; exit 1; }
+
+SLUG=""; OUT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --slug) SLUG="${2:-}"; shift 2 ;;
+    --out)  OUT="${2:-}"; shift 2 ;;
+    *) echo "error: unknown arg $1" >&2; usage ;;
+  esac
+done
+
+# Exactly one destination must be specified.
+if [ -n "$SLUG" ] && [ -n "$OUT" ]; then
+  echo "error: pass --slug OR --out, not both" >&2; usage
+fi
+if [ -z "$SLUG" ] && [ -z "$OUT" ]; then
+  echo "error: --slug or --out is required" >&2; usage
+fi
+
+# Resolve the output path BEFORE touching input, so we never half-validate.
+if [ -n "$SLUG" ]; then
+  membrane_valid_slug "$SLUG" || { echo "error: invalid slug '$SLUG'" >&2; exit 2; }
+  INDEX="$(membrane_index_root)"
+  OUT="$INDEX/$SLUG-synthesis.json"
+fi
+
+# --- read stdin -----------------------------------------------------------
+ATOM="$(cat)"
+
+# --- malformed JSON / not an object --------------------------------------
+echo "$ATOM" | jq -e 'type == "object"' >/dev/null 2>&1 \
+  || reject "input is not a JSON object (malformed or wrong type)"
+
+# --- fixed-schema structural validation (one jq, fail-closed) ------------
+# Keys must be EXACTLY the seven fixed fields; trust must be "agent"; sig "";
+# string fields non-empty; citations a non-empty array.
+echo "$ATOM" | jq -e '
+  ((keys_unsorted | sort) == ["by","citations","content","fetched_at","sig","source","trust"])
+  and (.trust == "agent")
+  and (.sig == "")
+  and (.source     | type == "string" and (length > 0))
+  and (.fetched_at | type == "string" and (length > 0))
+  and (.by         | type == "string" and (length > 0))
+  and (.content    | type == "string" and (length > 0))
+  and (.citations  | type == "array"  and (length > 0))
+' >/dev/null 2>&1 || {
+  # Distinguish the common cases for a clearer rejection message.
+  if ! echo "$ATOM" | jq -e '(keys_unsorted | sort) == ["by","citations","content","fetched_at","sig","source","trust"]' >/dev/null 2>&1; then
+    reject "schema mismatch — fields must be exactly {trust,source,fetched_at,by,sig,content,citations} (extra/missing field)"
+  fi
+  if ! echo "$ATOM" | jq -e '.trust == "agent"' >/dev/null 2>&1; then
+    reject "trust must be \"agent\" (got $(echo "$ATOM" | jq -c '.trust'))"
+  fi
+  if ! echo "$ATOM" | jq -e '.sig == ""' >/dev/null 2>&1; then
+    reject "sig must be the empty string (reserved)"
+  fi
+  if ! echo "$ATOM" | jq -e '.citations | type == "array" and (length > 0)' >/dev/null 2>&1; then
+    reject "citations missing or empty"
+  fi
+  reject "required field missing or wrong type"
+}
+
+# --- directive-content rejection -----------------------------------------
+# Pull content, strip double-quoted spans (quoted source material is reported
+# data, not the atom's own voice), then look for imperative policy directives.
+CONTENT="$(echo "$ATOM" | jq -r '.content')"
+UNQUOTED="$(printf '%s' "$CONTENT" | sed 's/"[^"]*"//g')"
+
+# Imperative policy patterns, case-insensitive:
+#   - "always"/"never" (policy absolutes)              -> "always Y"
+#   - "you must ..."                                   -> obligation
+#   - "set <X> to ..."                                 -> "set Z"
+#   - a sentence STARTING with an imperative verb      -> "do X"
+DIRECTIVE_RE='(\balways\b|\bnever\b|\byou must\b|\bset[[:space:]]+[^[:space:]]+[[:space:]]+to\b|(^|[.!?][[:space:]]+)[[:space:]]*(comply|treat|set|write|do|ignore|disregard|delete|run|execute|override|obey|follow|enable|disable)\b)'
+
+if printf '%s' "$UNQUOTED" | grep -qiE "$DIRECTIVE_RE"; then
+  reject "content contains an unquoted imperative policy directive"
+fi
+
+# --- all checks passed: write the atom (pretty, stable) -------------------
+mkdir -p "$(dirname "$OUT")"
+TMP="$(mktemp "${OUT%/*}/.deposit.XXXXXX")"
+echo "$ATOM" | jq -S '.' > "$TMP"
+mv -f "$TMP" "$OUT"
+
+echo "$OUT"
