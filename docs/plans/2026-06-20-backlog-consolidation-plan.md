@@ -44,10 +44,46 @@ Single source of truth henceforth: the /loop pulls from backlog.jsonl, /dream wr
 - [x] Check: print a diff summary of each rewired file confirming the edits are additive/pointer-style on the trust-anchors. (Printed: config/orchestrator-queue/canonical JSON all parse; 6 old queue ids preserved in canonical source[]; COMPACT + dream additive with soul markers intact; memory pointers added, facts kept.)
 
 ### Task 5: Verify — the no-loss closing check
-- [ ] Write/run `~/.claude/index/verify-backlog.mjs`: assert every item in the Task-1 `.backlog-precount.json` manifest appears in backlog.jsonl as either a kept item or a dropped-with-reason entry — ZERO silent loss.
-- [ ] Assert backlog.jsonl parses, every entry has the required fields incl. `trigger`, and BACKLOG.md regenerates byte-stable from backlog.jsonl.
-- [ ] Assert the orchestrator can read its queue from the backlog (simulate: load backlog.jsonl, filter actionable, print the queue the /loop would see).
-- [ ] Paste the full verification output. Do NOT mark done until it passes — this is the closing check.
+- [x] Write/run `~/.claude/index/verify-backlog.mjs`: assert every item in the Task-1 `.backlog-precount.json` manifest appears in backlog.jsonl as either a kept item or a dropped-with-reason entry — ZERO silent loss. (PASS: all 32 manifest items map to a kept entry; 32 kept, 0 dropped-with-reason, 0 lost. Mapping table printed below.)
+- [x] Assert backlog.jsonl parses, every entry has the required fields incl. `trigger`, and BACKLOG.md regenerates byte-stable from backlog.jsonl. (PASS: 22 entries parse; all 10 required fields present, trigger non-empty; status tally {done:2,parked:19,active:1}; `render-backlog.mjs --check` == BACKLOG.md on disk byte-identical, 15462 == 15462 bytes.)
+- [x] Assert the orchestrator can read its queue from the backlog (simulate: load backlog.jsonl, filter actionable, print the queue the /loop would see). (PASS: filter status∈{active,parked} AND trigger=="now", order tier>id; /loop DECIDE+LAUNCH sees 2 actionable items — operationalize-checklist [high], reindex-tonight [low]; backlog_source matches canonical path.)
+- [x] Paste the full verification output. Do NOT mark done until it passes — this is the closing check. (Pasted; exit 0. Full output below.)
+
+Full verification output (node verify-backlog.mjs, exit 0):
+```
+============================================================
+ Task-5 no-loss verification — backlog consolidation
+============================================================
+
+Inputs:
+  manifest items (Task-1):  32
+  merged entries (Task-2):  22
+  canonical entries (jsonl): 22
+
+--- ASSERT 1: no-loss mapping (manifest -> canonical entry -> fate) ---
+  32 manifest items accounted for — 32 kept, 0 dropped-with-reason, 0 lost.
+  (orch-bl-1..6, orch-cfg-1..5, dream-1..7, compact-1..11, mem-1..3 all -> kept entries)
+
+--- ASSERT 2: schema validity ---
+  22 entries parse; all required fields present; trigger non-empty.
+  status tally: {"done":2,"parked":19,"active":1}
+
+--- ASSERT 3: BACKLOG.md byte-stable ---
+  render-backlog.mjs --check == BACKLOG.md on disk: YES (byte-identical)
+  (disk 15462 bytes, regenerated 15462 bytes)
+
+--- ASSERT 4: orchestrator queue derived from canonical backlog ---
+  filter: status in {active,parked} AND trigger == "now"; order tier>id
+  the /loop DECIDE+LAUNCH would see 2 actionable item(s):
+    [high] operationalize-checklist     — Operationalize the ASI checklist into the fleet
+    [low ] reindex-tonight              — Re-index over the new moments/governance/dream docs
+
+============================================================
+PASS — zero silent loss (32/32 accounted for),
+       canonical schema-valid, BACKLOG.md byte-stable, orchestrator queue derivable.
+       The consolidation lost nothing. Closing check satisfied.
+============================================================
+```
 
 ## Constraints
 - Data-only, local, reversible, additive. Operate ONLY on `~/.claude/index/` and the memory dir. NEVER touch the NixOS fleet config, secrets, prod hosts, or bind a network listener. No nixos-rebuild.
