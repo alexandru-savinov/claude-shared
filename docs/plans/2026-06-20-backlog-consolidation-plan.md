@@ -26,9 +26,9 @@ Single source of truth henceforth: the /loop pulls from backlog.jsonl, /dream wr
 - [x] Check: the manifest lists every item found; print the per-source counts. (32 items: orchestrator 11, dreams 7, compact 11, memories 3; all unique, manifest parses.)
 
 ### Task 2: Dedupe and triage
-- [ ] Merge overlapping items across sources (union; keep the richest description; record ALL origins in `source[]`).
-- [ ] Triage each merged item: assign `trigger`, `tier`, `status`. Items with a real trigger or genuine intent → status `parked`/`active`. Items that are noise / stale / no genuine intent → status `dropped` with a `why`/reason. NEVER drop silently.
-- [ ] Check: assert every Task-1 manifest item maps to exactly one merged entry (kept or dropped) — print a mapping table (original → entry id → status).
+- [x] Merge overlapping items across sources (union; keep the richest description; record ALL origins in `source[]`). (32 manifest items → 22 merged entries in `.backlog-dedup.json`; 8 entries merged >1 origin — e.g. secure-main-thread unioned dream-1/dream-6/compact-7/compact-8.)
+- [x] Triage each merged item: assign `trigger`, `tier`, `status`. Items with a real trigger or genuine intent → status `parked`/`active`. Items that are noise / stale / no genuine intent → status `dropped` with a `why`/reason. NEVER drop silently. (Tally: 19 parked, 1 active, 2 done. None dropped — every gathered item had genuine intent; the stale/superseded ones (run-2 tagging, shared-memory MVP, confirmed via COMPACT RUN-2 DONE) are status=done, not deleted.)
+- [x] Check: assert every Task-1 manifest item maps to exactly one merged entry (kept or dropped) — print a mapping table (original → entry id → status). (`.backlog-dedup-check.mjs` PASS: all 32 map to exactly one of 22 entries; zero silent loss; no duplicate/stray mappings; schema sane.)
 
 ### Task 3: Write the canonical backlog + rendered view
 - [ ] Write `~/.claude/index/backlog.jsonl` — the canonical store, one schema object per line.
