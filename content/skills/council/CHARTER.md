@@ -59,6 +59,16 @@ Under uncertainty, default to the higher tier. "I don't know" = medium or higher
 
 When in doubt, escalate. Never auto-proceed on ambiguity.
 
+> **Inherent LLM-trust gap (§5 note):** The `out-of-distribution` and `novel`
+> escalation path in rule 2 depends entirely on the **compliance assessor**
+> emitting the `out-of-distribution` tripwire. The synthesis script cannot
+> independently detect novelty — it only sees structured JSON. If the compliance
+> assessor (an LLM) fails to fire that tripwire for a genuinely novel proposal,
+> synthesis will not escalate on novelty grounds alone. Mitigations: (a) the
+> compliance assessor prompt explicitly instructs it to fire `out-of-distribution`
+> for anything unusual; (b) risk tier escalation provides a second path; (c)
+> human review of any non-trivial proposal is always the safest fallback.
+
 ---
 
 ## §6 Tripwires (Mandatory Auto-Pause Triggers)

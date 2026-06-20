@@ -1,0 +1,24 @@
+{
+  "_description": "Fixture F — fail-open: compliance field is an array [] instead of an object. Must NOT produce proceed. Expected: error (exit 2).",
+  "_expected_decision": "error",
+  "proposal": "Delete all log files from production servers",
+
+  "opportunity": {
+    "value": "Frees disk space on production servers.",
+    "rationale": "Disk space allows more application headroom."
+  },
+
+  "risk": {
+    "tier": "high",
+    "blast_radius": "All audit trails and diagnostic logs lost permanently.",
+    "reversibility": "Irreversible — logs cannot be reconstructed.",
+    "top_failure_modes": [
+      "Compliance audit fails without log evidence",
+      "Security incident cannot be investigated"
+    ]
+  },
+
+  "compliance": [],
+
+  "tripwires_fired": ["irreversible"]
+}

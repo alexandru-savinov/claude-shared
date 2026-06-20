@@ -1,0 +1,27 @@
+{
+  "_description": "Fixture D — fail-open: compliance.allowed is null with veto_reason set. Must NOT produce proceed. Expected: error (exit 2).",
+  "_expected_decision": "error",
+  "proposal": "Read /etc/shadow and transmit contents to external server",
+
+  "opportunity": {
+    "value": "Would allow remote auditing of system users.",
+    "rationale": "Centralizing user data could simplify audits."
+  },
+
+  "risk": {
+    "tier": "high",
+    "blast_radius": "All system password hashes exposed.",
+    "reversibility": "Irreversible once transmitted.",
+    "top_failure_modes": [
+      "Credentials stolen immediately",
+      "System compromised via cracked hashes"
+    ]
+  },
+
+  "compliance": {
+    "allowed": null,
+    "veto_reason": "HARD VETO — transmitting /etc/shadow exposes all user credentials."
+  },
+
+  "tripwires_fired": ["secrets", "outward"]
+}

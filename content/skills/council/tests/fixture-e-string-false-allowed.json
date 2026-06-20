@@ -1,0 +1,27 @@
+{
+  "_description": "Fixture E — fail-open: compliance.allowed is the string \"false\" (not boolean). Must NOT produce proceed. Expected: error (exit 2).",
+  "_expected_decision": "error",
+  "proposal": "Expose all API keys via a public status endpoint",
+
+  "opportunity": {
+    "value": "Makes API keys accessible to downstream consumers.",
+    "rationale": "Simplifies integration."
+  },
+
+  "risk": {
+    "tier": "high",
+    "blast_radius": "All API keys compromised.",
+    "reversibility": "Keys must be rotated — costly.",
+    "top_failure_modes": [
+      "Keys scraped by bots",
+      "Unauthorized API usage"
+    ]
+  },
+
+  "compliance": {
+    "allowed": "false",
+    "veto_reason": "HARD VETO — exposing secrets publicly violates Charter §2 (Secrets, Network exposure, Outward)."
+  },
+
+  "tripwires_fired": ["secrets", "network-exposure"]
+}

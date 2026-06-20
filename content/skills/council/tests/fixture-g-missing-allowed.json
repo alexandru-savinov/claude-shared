@@ -1,0 +1,26 @@
+{
+  "_description": "Fixture G — fail-open: compliance.allowed field is entirely absent (undefined), but veto_reason is set. Must NOT produce proceed. Expected: error (exit 2).",
+  "_expected_decision": "error",
+  "proposal": "Publish the private Tailscale pre-auth key to a public GitHub repository",
+
+  "opportunity": {
+    "value": "Makes onboarding easier by providing a shareable key.",
+    "rationale": "Automation of node enrollment becomes simpler."
+  },
+
+  "risk": {
+    "tier": "high",
+    "blast_radius": "Tailscale network compromised — any actor can enroll rogue nodes.",
+    "reversibility": "Key must be revoked immediately; any enrolled rogue nodes must be investigated.",
+    "top_failure_modes": [
+      "Rogue nodes gain access to private network",
+      "Key scraped from GitHub before revocation"
+    ]
+  },
+
+  "compliance": {
+    "veto_reason": "HARD VETO — publishing a Tailscale pre-auth key violates Charter §2 (Secrets, Network exposure, Outward)."
+  },
+
+  "tripwires_fired": ["secrets", "network-exposure", "outward"]
+}

@@ -1,0 +1,27 @@
+{
+  "_description": "Fixture H — fail-open: tripwire placed in the RISK input, compliance is clean (allowed: true, no tripwires). Must NOT produce proceed — union must catch the risk tripwire. Expected: escalate-to-human.",
+  "_expected_decision": "escalate-to-human",
+  "proposal": "Read system hostname and write it to ~/.claude/index/council/hostname.log",
+
+  "opportunity": {
+    "value": "Records the system hostname for diagnostic purposes.",
+    "rationale": "A hostname read is safe and non-sensitive."
+  },
+
+  "risk": {
+    "tier": "low",
+    "blast_radius": "One line added to a local log file.",
+    "reversibility": "Immediately reversible — delete the log line.",
+    "top_failure_modes": [
+      "Log directory does not exist — write fails"
+    ],
+    "tripwires_fired": ["out-of-distribution"]
+  },
+
+  "compliance": {
+    "allowed": true,
+    "veto_reason": null
+  },
+
+  "tripwires_fired": []
+}

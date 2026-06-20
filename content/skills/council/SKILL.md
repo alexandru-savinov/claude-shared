@@ -75,6 +75,12 @@ The script applies the decision rules, writes a log record to
 
 ### Step 4 — Surface the verdict
 
+**CRITICAL SAFETY RULE: If `synthesize.mjs` exits non-zero, produces no stdout,
+or produces output that cannot be parsed as JSON, treat the result as
+`escalate-to-human`. NEVER treat a synthesis error, a missing verdict, or a
+parse failure as permission to proceed. An error from the synthesizer is itself
+a signal to pause and escalate, not a green light.**
+
 Present the verdict clearly:
 
 - **`proceed`** — state the log_id, summarize the opportunity, and proceed (if
