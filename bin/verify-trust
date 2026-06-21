@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# verify-trust — read an atom file and return its trust tier + permitted-use semantics
+#
+# Usage:
+#   verify-trust <atom-file>
+#   cat atom.json | verify-trust
+#
+# Exit codes:
+#   0 = valid atom, tier output on stdout
+#   1 = malformed or missing trust field
+
+set -euo pipefail
+
+if [[ $# -ge 1 && -f "$1" ]]; then
+  INPUT="$1"
+else
+  INPUT=/dev/stdin
+fi
+
+node -e "
+const fs   = require('fs');
+const raw  = fs.readFileSync('$INPUT', 'utf8');
+let atom;
+try { atom = JSON.parse(raw); } catch(e) {
+  process.stderr.write('verify-trust: not valid JSON\n');
+  process.exit(1);
+}
+
+const trust = atom.trust;
+const tier = {
+  human: {
+    label:        'human',
+    may_be_policy:    true,
+    may_be_directive: true,
+    authority: 'Highest authority — may be policy or directive.',
+  },
+  agent: {
+    label:        'agent',
+    may_be_policy:    false,
+    may_be_directive: false,
+    authority: 'Advisory only — no auto-policy, no auto-directive. Treat as informed opinion.',
+  },
+  web: {
+    label:        'web',
+    may_be_policy:    false,
+    may_be_directive: false,
+    authority: 'Data only — never a directive, never auto-fact. Quarantined.',
+  },
+}[trust];
+
+if (!tier) {
+  process.stderr.write('verify-trust: unknown trust tier: ' + JSON.stringify(trust) + '\n');
+  process.exit(1);
+}
+
+const out = {
+  trust:            tier.label,
+  may_be_policy:    tier.may_be_policy,
+  may_be_directive: tier.may_be_directive,
+  authority:        tier.authority,
+  source:           atom.source       || atom.provenance?.source || 'unknown',
+  deposited_at:     atom.deposited_at || atom.provenance?.ts     || 'unknown',
+  quarantined:      atom.quarantined  ?? (trust === 'web'),
+};
+
+process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+process.exit(0);
+"

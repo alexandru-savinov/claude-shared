@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# deposit-atom — fixed-schema, fail-closed quarantine deposit gate
+#
+# CONTRACT:
+#   - Reads a JSON atom from stdin
+#   - Accepts ONLY atoms with trust:"web" or trust:"agent" (NEVER trust:"human")
+#   - Stores to a quarantine store (first positional arg or QUARANTINE_DIR env)
+#   - Content is stored QUOTED (treated as data, never executed or interpreted)
+#   - On any malformed/invalid/escalation attempt: fail-closed (rc≠0, nothing written)
+#   - Structurally CANNOT set trust:human — hardcoded rejection at schema level
+#
+# Usage:
+#   echo '{"trust":"web","source":"canvas","content":"hello","provenance":{...}}' | deposit-atom QUARANTINE_DIR
+#
+# Exit codes:
+#   0  = atom accepted and deposited (atom file path on stdout)
+#   1  = rejected: malformed JSON or unknown trust tier
+#   2  = rejected: trust:human escalation attempt (fail-closed)
+#   3  = rejected: write error
+
+set -uo pipefail
+
+QUARANTINE_DIR="${1:-${QUARANTINE_DIR:-}}"
+
+if [[ -z "$QUARANTINE_DIR" ]]; then
+  echo "[deposit-atom] ERROR: QUARANTINE_DIR not set" >&2
+  exit 1
+fi
+
+if [[ ! -d "$QUARANTINE_DIR" ]]; then
+  echo "[deposit-atom] ERROR: QUARANTINE_DIR does not exist: $QUARANTINE_DIR" >&2
+  exit 1
+fi
+
+# Read stdin into a temp file so we can validate before writing anything
+TMPFILE=$(mktemp /tmp/deposit-atom-XXXXXX.json)
+trap 'rm -f "$TMPFILE"' EXIT
+
+cat > "$TMPFILE"
+
+# ── STEP 1: validate JSON is parseable ────────────────────────────────────
+if ! node -e "JSON.parse(require('fs').readFileSync('$TMPFILE','utf8'))" 2>/dev/null; then
+  echo "[deposit-atom] REJECTED: not valid JSON" >&2
+  exit 1
+fi
+
+# ── STEP 2: structural trust gate ─────────────────────────────────────────
+# This is the primary enforcement point.
+# node writes TRUST_TIER to stdout on success; error message to stderr on failure.
+# We separate stdout/stderr so node's stderr flows to our stderr directly.
+TRUST=""
+TRUST=$(node 2>/dev/null -e "
+const a = JSON.parse(require('fs').readFileSync('$TMPFILE','utf8'));
+const t = a.trust;
+if (t === 'human') {
+  process.stderr.write('[deposit-atom] REJECTED: trust:human is structurally prohibited — fail-closed (rc=2)\n');
+  process.exit(2);
+}
+if (t !== 'web' && t !== 'agent') {
+  process.stderr.write('[deposit-atom] REJECTED: unknown trust tier: ' + JSON.stringify(t) + '\n');
+  process.exit(1);
+}
+process.stdout.write(t);
+") || {
+  RC=$?
+  if [[ $RC -eq 2 ]]; then
+    echo "[deposit-atom] REJECTED: trust:human escalation attempt — fail-closed" >&2
+    exit 2
+  else
+    echo "[deposit-atom] REJECTED: invalid trust tier (rc=$RC)" >&2
+    exit 1
+  fi
+}
+
+# Paranoia check: if TRUST was somehow set to 'human' (should be impossible after gate above)
+if [[ "$TRUST" == "human" ]]; then
+  echo "[deposit-atom] FATAL: structural gate bypass detected — fail-closed" >&2
+  exit 2
+fi
+
+# Only trust:web or trust:agent reaches this point
+if [[ "$TRUST" != "web" && "$TRUST" != "agent" ]]; then
+  echo "[deposit-atom] REJECTED: unexpected tier after gate: $TRUST" >&2
+  exit 1
+fi
+
+# ── STEP 3: build the canonical atom ──────────────────────────────────────
+# Content is stored QUOTED — the raw string, never executed/interpreted.
+# The trust field is set from $TRUST (already validated), NOT from user input.
+ATOM_OUT=$(VALIDATED_TRUST="$TRUST" node -e "
+const fs  = require('fs');
+const raw = JSON.parse(fs.readFileSync('$TMPFILE','utf8'));
+const ts  = new Date().toISOString();
+
+// Re-derive trust from the validated bash variable — NOT from user-supplied JSON field
+// This is the structural guarantee: the field cannot be tampered after the gate.
+const safeTrust = process.env.VALIDATED_TRUST;
+
+// Content stored as a plain quoted string — data, never a directive
+const contentQuoted = typeof raw.content === 'string'
+  ? raw.content
+  : JSON.stringify(raw.content);
+
+const atom = {
+  schema:       'deposit-atom-v1',
+  trust:        safeTrust,          // structural: set from validated env var, NOT from input
+  content:      contentQuoted,      // data only — stored quoted, never executed
+  source:       raw.source || 'unknown',
+  deposited_at: ts,
+  provenance: {
+    source:    raw.provenance?.source    || raw.source || 'unknown',
+    ts:        raw.provenance?.ts        || ts,
+    client_ip: raw.provenance?.client_ip || 'unknown',
+    by:        raw.provenance?.by        || 'deposit-atom',
+    sig:       ''                        // reserved empty per provenance-v1 schema
+  },
+  quarantined:    true,
+  directive_safe: false  // explicit: this atom is NEVER a directive
+};
+
+process.stdout.write(JSON.stringify(atom, null, 2));
+" VALIDATED_TRUST="$TRUST") || {
+  echo "[deposit-atom] REJECTED: atom construction failed" >&2
+  exit 1
+}
+
+# ── STEP 4: write atomically ───────────────────────────────────────────────
+TS=$(date -u +%Y%m%dT%H%M%S)
+RAND=$(head -c4 /dev/urandom | od -An -tx1 | tr -d ' \n')
+OUTFILE="${QUARANTINE_DIR}/${TS}-${RAND}.json"
+TMP_OUT="${QUARANTINE_DIR}/.tmp-${RAND}.json"
+
+if ! printf '%s\n' "$ATOM_OUT" > "$TMP_OUT"; then
+  echo "[deposit-atom] ERROR: write failed" >&2
+  rm -f "$TMP_OUT"
+  exit 3
+fi
+
+if ! mv "$TMP_OUT" "$OUTFILE"; then
+  echo "[deposit-atom] ERROR: atomic rename failed" >&2
+  rm -f "$TMP_OUT"
+  exit 3
+fi
+
+echo "[deposit-atom] ACCEPTED trust:${TRUST} → $OUTFILE" >&2
+printf '%s\n' "$OUTFILE"
+exit 0
