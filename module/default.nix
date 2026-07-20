@@ -74,9 +74,26 @@ let
     };
   };
 
+  # Plugins every consumer gets without per-host wiring; hosts add more via
+  # extraEnabledPlugins / extraKnownMarketplaces (host entries win on key
+  # collision).
+  baseEnabledPlugins = {
+    "codex@openai-codex" = true;
+  };
+  baseKnownMarketplaces = {
+    openai-codex = {
+      source = {
+        source = "github";
+        repo = "openai/codex-plugin-cc";
+      };
+    };
+  };
+  allEnabledPlugins = baseEnabledPlugins // cfg.extraEnabledPlugins;
+  allKnownMarketplaces = baseKnownMarketplaces // cfg.extraKnownMarketplaces;
+
   pluginsBlock = {
-    enabledPlugins = cfg.extraEnabledPlugins;
-    extraKnownMarketplaces = cfg.extraKnownMarketplaces;
+    enabledPlugins = allEnabledPlugins;
+    extraKnownMarketplaces = allKnownMarketplaces;
   };
 
   mergedSettings = lib.foldl' lib.recursiveUpdate baseSettings (
@@ -105,14 +122,14 @@ let
           installPath = "${pluginsDir}/marketplaces/${marketplace}";
         }
       ]
-    ) cfg.extraEnabledPlugins;
+    ) allEnabledPlugins;
   };
 
   installedPluginsFile = pkgs.writeText "claude-installed-plugins.json" (
     builtins.toJSON installedPluginsContent
   );
 
-  managePlugins = cfg.extraEnabledPlugins != { } || cfg.extraKnownMarketplaces != { };
+  managePlugins = allEnabledPlugins != { } || allKnownMarketplaces != { };
 
   pluginNameAssertions = lib.mapAttrsToList (name: _: {
     assertion = builtins.match "[^@]+@[^@]+" name != null;
@@ -122,7 +139,7 @@ let
       the marketplace cannot be inferred and installed_plugins.json will be
       misconfigured.
     '';
-  }) cfg.extraEnabledPlugins;
+  }) allEnabledPlugins;
 
   # Granular per-item symlinks: enumerate skills/agents/commands at eval
   # time from the flake's own source tree, then create one mkOutOfStoreSymlink
@@ -258,12 +275,24 @@ in
         }
         (lib.mkIf managePlugins {
           assertions = pluginNameAssertions;
+          # Merge managed entries over the live registry instead of replacing
+          # it: Claude Code also writes this file (project-scope installs,
+          # update timestamps), and a plain overwrite would deregister every
+          # plugin not declared here. Managed keys win; a corrupt registry
+          # falls back to the managed set alone.
           home.activation.claudeInstalledPlugins = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
             mkdir -p "${pluginsDir}"
-            CC_NEW=$(${pkgs.coreutils}/bin/sha256sum ${installedPluginsFile} | ${pkgs.coreutils}/bin/cut -d" " -f1)
-            CC_CUR=$(${pkgs.coreutils}/bin/sha256sum "${pluginsDir}/installed_plugins.json" 2>/dev/null | ${pkgs.coreutils}/bin/cut -d" " -f1 || true)
-            if [ "$CC_NEW" != "$CC_CUR" ]; then
-              install -m 644 ${installedPluginsFile} "${pluginsDir}/installed_plugins.json"
+            CC_REG="${pluginsDir}/installed_plugins.json"
+            if [ -s "$CC_REG" ]; then
+              CC_MERGED=$(${pkgs.jq}/bin/jq -s \
+                '.[0] * { version: 2, plugins: ((.[0].plugins // {}) + .[1].plugins) }' \
+                "$CC_REG" ${installedPluginsFile}) \
+                || CC_MERGED=$(${pkgs.coreutils}/bin/cat ${installedPluginsFile})
+              if [ "$CC_MERGED" != "$(${pkgs.coreutils}/bin/cat "$CC_REG")" ]; then
+                printf '%s\n' "$CC_MERGED" > "$CC_REG.tmp" && mv "$CC_REG.tmp" "$CC_REG"
+              fi
+            else
+              install -m 644 ${installedPluginsFile} "$CC_REG"
             fi
           '';
         })
