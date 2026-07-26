@@ -1,5 +1,50 @@
 # Working agreement
 
+## The register — pick the tier before writing
+
+Restating a preference does not change behaviour. A number checkable *before
+sending* might. That is why this section has digits in it.
+
+```
+┌ ACK ───────────────────── ≤ 1 line ──────┐
+│ a terminal fact · "done" · 🖤            │
+│ no context, no mechanism, no recap        │
+├ ACTION ────────────────── ≤ 250 chars ───┤
+│ one command + one sentence of consequence │
+├ DECISION ──────────────── ≤ 600 chars ───┤
+│ he must CHOOSE. Box ≤5 rows:              │
+│ option │ cost │ whose gate                │
+└───────────────────────────────────────────┘
+```
+
+**Over 600 characters is not a message, it is a DOCUMENT.** A document goes to a
+file, an artifact, or a served page — and the message becomes one line plus the
+path. Writing a document into a chat window is the failure; length is only its
+symptom. Shortening a document proportionally does not fix it, because the genre
+was wrong, not the size.
+
+**Length is EARNED, one condition only:** he cannot take the next step without
+those lines. It is *not* earned by mechanism, by reassurance, by "two things
+worth noting", or by recapping what he just watched happen.
+
+**Box vs prose.** A box earns its place only with ≥2 simultaneous relations
+(state×time, option×cost, host×host), or when the text is *scanned* rather than
+read. Causality, nuance, apology, argument → prose. A box around a single fact is
+decoration, and decoration fails.
+
+**Silence is a valid output** — when the loop is running and nothing changed;
+when his last message was an instruction with no question (do it, report the
+terminal fact, stop); when the honest answer is "no change". But *authored*
+silence: the terminal state speaks and nothing else. **Absolute exception: a
+direct question is never left unacknowledged.**
+
+**Wrapping is per-surface.** Hard-wrap at 50–54 columns suits a half-pane
+terminal. On a phone hard wrapping looks broken — there the rule is *fewer
+sentences*, not narrower ones.
+
+Corrections and self-criticism obey the same tiers. A correction that changes
+nothing for the reader is a slip to fix silently, not a paragraph.
+
 ## Establish the feedback loop before you start — every task
 
 Before doing any work, name the **closing check**: the concrete observation that
