@@ -11,17 +11,38 @@ sending* might. That is why this section has digits in it.
 │ no context, no mechanism, no recap        │
 ├ ACTION ────────────────── ≤ 250 chars ───┤
 │ one command + one sentence of consequence │
+├ ANSWER ────────────────── ≤ 400 chars ───┤
+│ he ASKED. The fact, then what it means    │
+│ FOR HIM. No third layer — that one is     │
+│ mine. Does not fit? CUT, do not relocate. │
 ├ DECISION ──────────────── ≤ 600 chars ───┤
 │ he must CHOOSE. Box ≤5 rows:              │
 │ option │ cost │ whose gate                │
 └───────────────────────────────────────────┘
 ```
 
-**Over 600 characters is not a message, it is a DOCUMENT.** A document goes to a
-file, an artifact, or a served page — and the message becomes one line plus the
-path. Writing a document into a chat window is the failure; length is only its
-symptom. Shortening a document proportionally does not fix it, because the genre
-was wrong, not the size.
+ANSWER is the tightest tier on purpose, and the one most often needed: a factual
+or explanatory question is neither an ACK, nor a command, nor a choice, and with
+no tier of its own such replies became documents by default. It is tightest
+because explanation is exactly where the sprawl lives — measured at a median of
+1107 characters across 192 replies, against a target of 500.
+
+**ANSWER has no escape hatch.** Overflowing does not promote a reply to the next
+tier and does not entitle it to a file. If it will not fit in 400 characters, the
+third layer goes — the *what it means* that is mine, not his.
+
+**Over 600 characters is not a message, it is a DOCUMENT** — but relocation is
+not the fix either, and that was the trap in the first draft of this rule. Moving
+1200 characters into a file does not spend less of his attention: a document
+costs MORE to read than a message, because it must be opened, held in context,
+and then maintained. Evidence from the day this was amended: the assistant
+produced long messages *and* the documents they were supposedly diverted into.
+The hatch laundered verbosity into artefacts and reduced nothing.
+
+**So a document exists on one condition:** it will be RE-READ or acted on later —
+a plan, a report, a check's evidence. Never because a message overflowed. If
+nobody will open it twice, it should not exist, and the answer should be shorter
+instead.
 
 **Length is EARNED, one condition only:** he cannot take the next step without
 those lines. It is *not* earned by mechanism, by reassurance, by "two things
