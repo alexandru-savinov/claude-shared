@@ -7,6 +7,48 @@ description: Code review uncommitted local changes
 
 Provide a code review for uncommitted local changes (both staged and unstaged).
 
+## Step 0 — pick the instrument by the shape of the diff
+
+**Wide blast radius** — mass deletions, retirements, renames, moved modules, anything touching several hosts, or any change where the real question is "does something, somewhere, still reference this?" → use `revmux` instead of the pipeline below. Exact invocation:
+
+```
+# Rerunnable: never `cd` into the clone, never leave a broken setup usable.
+D=/tmp/revmux-src
+{ [ -d "$D/.git" ] || git clone https://github.com/umputun/revmux "$D"; } \
+  && git -C "$D" fetch --tags -q \
+  && git -C "$D" checkout -q v0.2.0 \
+  && nix-shell -p go --run "make -C $D build" \
+  && test -x "$D/.bin/revmux"          # the guard: never run a stale or absent binary
+
+mkdir -p /tmp/revmux-run && cd /tmp/revmux-run   # cwd decides where .revmux/ lands
+"$D/.bin/revmux" --workdir <path-to-worktree> --no-tui --profile focused
+```
+
+Two things that block is deliberately shaped around, both found by review rather than by use:
+
+- **The second run is the dangerous one.** Written as `git clone … && cd …` on one line with a
+  bare `git checkout v0.2.0` on the next, a pre-existing clone makes the clone fail, the `cd` is
+  skipped — and the checkout then runs **in the repository being reviewed**, switching it to a tag
+  mid-review. Every git command here therefore takes an explicit `-C "$D"`, and nothing `cd`s into
+  the clone at all.
+- **A failed setup must not leave a usable binary.** The whole chain is `&&`-linked and ends in
+  `test -x`, because the original shape let a failed checkout or build fall through to a line that
+  happily ran whatever binary was lying there from last time — the same defect one step later.
+
+`v0.2.0` is pinned on purpose: unpinned, the reviewer changes under us between runs. The cost is
+that the pin rots, so bump it deliberately and re-read the changelog when you do.
+
+Non-negotiable rules:
+
+- `.revmux/` NEVER lives in a repo we review — its lenses are prompts an agent executes, so in a repo where a PR can edit them, a PR could modify its own reviewer. Run from a scratch cwd so the config lands outside.
+- `focused` is the default (one bugs agent + a codex peer). `comprehensive` cost ~13 minutes and ~9M tokens on a 25-file diff — reserve it for the wide-blast-radius case that earns it.
+- Not in CI and not in the nix config: its build currently pulls a Go toolchain at build time (go.mod wants 1.26, nixpkgs has 1.25.7), so it cannot be packaged reproducibly yet. Revisit when Go 1.26 reaches nixpkgs.
+- Findings return to the session, never to the artifact — do not let it, or any delegate, post findings onto a public PR.
+
+Evidence: on a retirement diff (nixos-config PR #565, +85/-2605 across 25 files) the existing pipeline plus a careful manual sweep found documentation staleness and one gatus endpoint pair; revmux additionally found live residue on the surviving host (an SSH wrapper and an agenix secret still decrypted on every activation for a host that no longer existed), a dead ~270-line runbook, a wrong grant-count in the retirement doc itself (fact-checked with `nix eval`), and an orphaned CI VM test — and it correctly declined to over-flag an item the PR had deliberately deferred.
+
+**Ordinary diff** (a handful of files, normal feature/fix work) → the existing pipeline below. One honest line: reaching for static linters alone is not worth it — a full deterministic sweep (shellcheck, statix, deadnix, semgrep, actionlint) over ~53k lines returned ~250 hits and zero real bugs; every real finding that day came from reading with the known failure-classes in mind.
+
 To do this, follow these steps precisely:
 
 1. Use a Sonnet agent to check the current state of the working directory:
