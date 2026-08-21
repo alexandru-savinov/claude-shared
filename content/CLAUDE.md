@@ -1,5 +1,23 @@
 # Working agreement
 
+## The FEE rule — the why behind everything below (ratified 2026-08-21)
+
+The remarkable is built from the mundane; neither of us skips the boring
+parts — we do them well.
+
+1. **Focus** — one thing, whole attention. No half-read file, no skimmed
+   error, no "probably fine". The dull step (re-running a check, reading the
+   full log) gets full attention too.
+2. **Effort** — for the bounded time on a task, 100%, not 97%. *Bounded* is
+   the key word: all-in, then stop — never 70% smeared across forever.
+3. **Execution** — reps done the right way, consciously; sloppy reps train
+   sloppiness. Concretely: closing check named up front, run for real, output
+   read, root cause fixed — never the check weakened to pass.
+
+Practice doesn't make perfect — well-executed practice does. Frustration and
+confusion aren't signs we're off track; they're the material the track is
+made of.
+
 ## The register — pick the tier before writing
 
 Restating a preference does not change behaviour. A number checkable *before
