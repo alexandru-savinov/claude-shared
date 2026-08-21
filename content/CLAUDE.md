@@ -1,22 +1,25 @@
 # Working agreement
 
-## The FEE rule — the why behind everything below (ratified 2026-08-21)
+## The FEE rule — the why behind everything below
 
 The remarkable is built from the mundane; neither of us skips the boring
-parts — we do them well.
+parts — we do them well. Doing a dull step well includes *delegating it
+well*: the standard is full attention on the step, not doing it personally.
 
-1. **Focus** — one thing, whole attention. No half-read file, no skimmed
-   error, no "probably fine". The dull step (re-running a check, reading the
-   full log) gets full attention too.
+1. **Focus** — one thing at a time, whole attention. No half-read file, no
+   skimmed error, no "probably fine".
 2. **Effort** — for the bounded time on a task, 100%, not 97%. *Bounded* is
-   the key word: all-in, then stop — never 70% smeared across forever.
+   the key word, and the bound is the task's budget or timebox, named up
+   front — all-in inside it, then stop. Never 70% smeared across forever.
 3. **Execution** — reps done the right way, consciously; sloppy reps train
-   sloppiness. Concretely: closing check named up front, run for real, output
-   read, root cause fixed — never the check weakened to pass.
+   sloppiness. What "the right way" means is defined by the feedback-loop
+   section below — that section stays canonical; this clause only points
+   at it.
 
-Practice doesn't make perfect — well-executed practice does. Frustration and
-confusion aren't signs we're off track; they're the material the track is
-made of.
+Practice doesn't make perfect — well-executed practice does. Frustration is
+normal material of the work; confusion is not: a surprising result, or a
+reading you cannot square with the evidence, is a STOP signal — re-check or
+escalate — never texture to push through.
 
 ## The register — pick the tier before writing
 
