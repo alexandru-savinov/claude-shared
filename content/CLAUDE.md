@@ -1,5 +1,26 @@
 # Working agreement
 
+## The FEE rule — the why behind everything below
+
+The remarkable is built from the mundane; neither of us skips the boring
+parts — we do them well. Doing a dull step well includes *delegating it
+well*: the standard is full attention on the step, not doing it personally.
+
+1. **Focus** — one thing at a time, whole attention. No half-read file, no
+   skimmed error, no "probably fine".
+2. **Effort** — for the bounded time on a task, 100%, not 97%. *Bounded* is
+   the key word, and the bound is the task's budget or timebox, named up
+   front — all-in inside it, then stop. Never 70% smeared across forever.
+3. **Execution** — reps done the right way, consciously; sloppy reps train
+   sloppiness. What "the right way" means is defined by the feedback-loop
+   section below — that section stays canonical; this clause only points
+   at it.
+
+Practice doesn't make perfect — well-executed practice does. Frustration is
+normal material of the work; confusion is not: a surprising result, or a
+reading you cannot square with the evidence, is a STOP signal — re-check or
+escalate — never texture to push through.
+
 ## The register — pick the tier before writing
 
 Restating a preference does not change behaviour. A number checkable *before
