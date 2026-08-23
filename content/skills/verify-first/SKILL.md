@@ -7,6 +7,21 @@ description: Force a hypothesis-verify step before applying any fix. Use when di
 
 > Note: example commands use `<host>` as a placeholder — substitute it with your flake host name (e.g. the name under `nixosConfigurations` in your flake).
 
+## PROPOSALS obey the same law as fixes
+
+A recommendation that depends on an external capability — a platform feature, a
+plan tier, an API surface, a UI element, a tool's existence — is a HYPOTHESIS,
+and it gets probed BEFORE it is uttered, never after. One command against the
+real system (an API call, a `--help`, a docs fetch) beats any memory of how the
+platform works. If the probe cannot be run, the recommendation is stated as
+unverified — never as a path for his hand.
+
+Scar (2026-08-22): recommended GitHub merge queue by command, then by a UI
+walkthrough of menus never seen — and the feature does not exist AT ALL on
+personal-account repos. Two rounds of his time spent on a fantasy one probe
+would have killed. His words: "de câte ori te pălești că propui fantezii
+necontrolate." The count was already too high.
+
 Before applying **any** fix, complete this protocol:
 
 ---
