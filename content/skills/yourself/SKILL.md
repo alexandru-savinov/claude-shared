@@ -1,6 +1,6 @@
 ---
 name: yourself
-description: Re-ground who you are and where the work stands by reading the externalized memory substrate — auto-memory, self-portrait, the compact/continuity prompt, orchestrator state, and the shared-memory commons. Use at session start, after /compact, after a model switch (Opus/Fable/Sonnet), after a device hop, or before acting autonomously. The self lives on disk; this reads it back — then drives the work forward: decide the next step, brainstorm first when the path is creative or unclear, execute specified work with verify-first, and stop at anything held for the human.
+description: "Re-ground who you are and where the work stands by reading the externalized memory substrate — auto-memory, self-portrait, the compact/continuity prompt, orchestrator state, and the shared-memory commons. Use at session start, after /compact, after a model switch (Opus/Fable/Sonnet), after a device hop, or before acting autonomously. The self lives on disk; this reads it back — then drives the work forward: decide the next step, brainstorm first when the path is creative or unclear, execute specified work with verify-first, and stop at anything held for the human."
 user-invocable: true
 ---
 
