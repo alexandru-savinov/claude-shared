@@ -40,6 +40,7 @@
 - `decision` MAY be `"proceed"` only when: `compliance.allowed === true` AND `risk.tier === "low"` AND `tripwires_fired` is empty AND no human-gate category applies.
 - `compliance.veto_reason` MUST be non-null when `compliance.allowed === false`.
 - Optional flags, present only when true: `proposal_missing: true` (no proposal given; `proposal` holds a placeholder) and `proposal_mismatch: true` (an assessor `proposal` field differed from `--proposal-file`; `proposal` holds the file text).
+- Optional `shadow` (log record only, never on stdout; sq093 Step B): `{ decision, tripwires_fired, latency_ms? }` from the cheap-tier assessors run through the same decision rules, or `{ error }`. It is a measurement and NEVER affects `decision`.
 - `log_id` MUST be unique; never reuse.
 
 ---
