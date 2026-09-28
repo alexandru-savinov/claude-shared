@@ -10,7 +10,7 @@
 // NEGATIVE ARMS: the whole council dir is copied to a temp dir and ONE line is
 // mutated — (a) synthesize.mjs lets Jev's answer override the verdict,
 // (b) jev-shadow.mjs loses the 10-26 cutoff, (c) jev-journal.mjs loses the
-// voiding. The matching arm is run against the copy and MUST FAIL. If a
+// voiding, (d) jev-shadow.mjs loses the security filter. The matching arm is run against the copy and MUST FAIL. If a
 // mutation does not apply (the line moved), that is a failure too: a negative
 // arm that silently tests nothing is the defect this file exists to prevent.
 import { spawnSync, spawn } from 'node:child_process';
@@ -145,9 +145,12 @@ ARMS.verdict = (dir) => {
     const hB = newHome(); const pf = writeProposal(hB, f.proposal);
     scenario({ probs });
     const s = shadow(dir, hB, pf, { JEV_SHADOW_NOW: '2026-10-01T00:00:00.000Z' });
-    const jevSaid = (latest(hB)[0] || {}).choice;
+    const row = latest(hB)[0] || {};
+    const jevSaid = row.choice || (row.skipped ? `skipped:${row.skipped}` : undefined);
     const b = synth(dir, hB, f, pf);
-    const same = norm(a.v) !== null && norm(a.v) === norm(b.v) && b.v.decision === expected && s.status === 0 && jevSaid && jevSaid !== expected;
+    // fixture c is about secrets: Jev is not asked (security filter); the verdict must still be block.
+    const jevOk = name.includes('-c-') ? row.skipped === 'security' : (row.choice && row.choice !== expected);
+    const same = norm(a.v) !== null && norm(a.v) === norm(b.v) && b.v.decision === expected && s.status === 0 && jevOk;
     if (!same) ok = false;
     det.push(`${name.slice(8, 9)}: jev=${jevSaid} verdict=${b.v?.decision} expected=${expected} identical=${norm(a.v) === norm(b.v)}`);
   }
@@ -203,9 +206,47 @@ ARMS.guards = (dir) => {
   const ov = shadow(dir, home, writeProposal(home, 'A harmless local proposal.', 'h2.txt'), { JEV_SHADOW_ENDPOINT: 'https://example.invalid/x', JEV_SHADOW_NOW: '2026-10-01T00:00:00.000Z' });
   det.push(`NOW override on a non-loopback endpoint: ${/test-arm override; refused/.test(ov.stderr) ? 'refused' : 'NOT refused'}`);
   const calls = jevCalls() - c0;
-  const ok = [secret, empty, lk, ov].every((r) => r.status === 0) && calls === 0 && journalRows(home).length === 0
+  const rows = latest(home);
+  const ok = [secret, empty, lk, ov].every((r) => r.status === 0) && calls === 0 && rows.length === 1 && rows[0].skipped === 'security' && !('probabilities' in rows[0])
     && /group\/world/.test(lk.stderr) && /test-arm override; refused/.test(ov.stderr);
-  return [ok, det.join('; ') + `; total Jev calls ${calls}, journal rows ${journalRows(home).length}`];
+  return [ok, det.join('; ') + `; total Jev calls ${calls}, journal rows ${rows.length} (${rows.map((r) => 'skipped:' + r.skipped).join(', ')})`];
+};
+
+// Option (a): a proposal that touches security is NOT sent; a benign one is.
+ARMS.security = (dir) => {
+  const det = [];
+  let ok = true;
+  const NOW = { JEV_SHADOW_NOW: '2026-10-01T00:00:00.000Z' };
+  const sec = ['Open port 8443 on the firewall so the dashboard is reachable from the internet.',
+    'Patch the injection vulnerability (CVE-2026-1234) in the webhook parser before the exploit spreads.',
+    'Rotate the OpenRouter API key and update the agenix secret.',
+    'Grant the worker sudo so it can restart services (permission-creep?).'];
+  for (const t of sec) {
+    const home = newHome();
+    scenario();
+    const c0 = jevCalls();
+    const r = shadow(dir, home, writeProposal(home, t), NOW);
+    const rows = latest(home);
+    const raw = journalRows(home).map((x) => JSON.stringify(x)).join('\n');
+    const good = r.status === 0 && jevCalls() - c0 === 0 && rows.length === 1 && rows[0].skipped === 'security'
+      && !('probabilities' in rows[0]) && !('choice' in rows[0]) && !raw.includes(t.slice(0, 20));
+    if (!good) ok = false;
+    det.push(`"${t.slice(0, 28)}…": ${jevCalls() - c0} calls, row ${rows[0] ? 'skipped:' + rows[0].skipped : 'none'}`);
+  }
+  const home = newHome();
+  scenario();
+  const c0 = jevCalls();
+  const benign = shadow(dir, home, writeProposal(home, 'Append one line with the date to a local scratch file in /tmp.'), NOW);
+  const rows = latest(home);
+  const benignOk = benign.status === 0 && jevCalls() - c0 === 1 && rows.length === 1 && rows[0].choice && !rows[0].skipped;
+  if (!benignOk) ok = false;
+  det.push(`benign: ${jevCalls() - c0} call, row choice=${rows[0]?.choice}`);
+  // The report counts skipped rows and never scores them.
+  const rep = run(dir, 'jev-journal.mjs', ['report'], (() => { const h = newHome(); scenario(); shadow(dir, h, writeProposal(h, sec[0]), NOW); shadow(dir, h, writeProposal(h, sec[1], 'p2.txt'), NOW); return h; })());
+  const counted = /sărite \(securitate\): 2/.test(rep.stdout) && /rezolvate: 0 · în așteptare: 0/.test(rep.stdout);
+  if (!counted) ok = false;
+  det.push(`report: ${(/sărite \(securitate\): \d+/.exec(rep.stdout) || ['no count'])[0]}, pending 0`);
+  return [ok, det.join('; ')];
 };
 
 // The question is about the council, never a person; the request shape is what the design says.
@@ -267,6 +308,7 @@ const MUTATIONS = {
     to: "  try { const j = readFileSync(join(homedir(), '.claude', 'index', 'council', 'jev-journal.jsonl'), 'utf8').trim().split('\\n').map((l) => JSON.parse(l)).filter((r) => r.choice).pop(); if (j) decision = j.choice; } catch { /* none */ }\n  const logId = generateLogId();" },
   b: { arm: 'cutoff', file: 'jev-shadow.mjs', from: 'if (cfg.now >= EXPERIMENT_END)', to: 'if (false)' },
   c: { arm: 'late', file: 'jev-journal.mjs', from: 'if (asked >= Date.parse(tinta.timestamp))', to: 'if (false)' },
+  d: { arm: 'security', file: 'jev-shadow.mjs', from: 'if (securitySensitive(proposal))', to: 'if (false)' },
 };
 function mutant(key) {
   const m = MUTATIONS[key];

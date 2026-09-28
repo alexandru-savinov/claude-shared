@@ -25,8 +25,13 @@
 //   4. NEVER A QUESTION ABOUT ALEXANDRU. The question set and the council
 //      description are constants; guardQuestions() refuses person/behaviour
 //      words in them. The state is {proposal, council} and nothing else.
-//   5. NOTHING SECRET-SHAPED LEAVES. A proposal carrying an API-key/token/
-//      private-key pattern, an empty one, or one over 24 KiB is not sent.
+//   5. NOTHING ABOUT SECURITY LEAVES (option (a), decided 2026-09-28). A
+//      proposal that touches security — the council's own vocabulary for
+//      secrets, network exposure, vulnerabilities, exploits, credentials —
+//      or carries a secret-shaped string is NOT sent. It leaves one row
+//      {skipped:"security"} with no text and no probabilities, never scored:
+//      security findings stay in the house. An empty proposal, or one over
+//      24 KiB, is not sent either (no row).
 //   6. 402 / 429 / timeout / malformed → one `error` row (no probabilities), exit 0.
 //
 // Env overrides are for the test arm ONLY and are refused unless the endpoint
@@ -100,6 +105,13 @@ const SECRET_SHAPES = [
   /\b[A-Fa-f0-9]{48,}\b/,               // long bare hex
 ];
 export const secretShaped = (text) => SECRET_SHAPES.some((re) => re.test(text));
+
+// The council's security vocabulary: CHARTER §2 gate categories secrets and
+// network exposure, the tripwire ids that carry them, and the words a
+// vulnerability or an attack is written in. Words, not intent: a false skip
+// costs one unasked council; a false pass sends a security matter outside.
+const SECURITY = /(?<![\p{L}\p{N}])(secrets?|network[- ]exposure|permission[- ]creep|security|securitate|vulnerab|cve|exploit|injection|inject|xss|csrf|rce|ssrf|privilege|escalation of privilege|credential|password|passphrase|parol|token|api[- ]?keys?|private[- ]keys?|ssh[- ]keys?|age[- ]keys?|agenix|sops|keyring|auth|oauth|2fa|mfa|firewall|open(ing)? (a )?ports?|expose|exposure|public endpoint|ingress|acl|tls|certificate|encrypt|decrypt|leak|exfiltrat|attack|malware|phishing|backdoor|sudo|root access|sandbox|jailbreak|disclos|pentest)[\p{L}\p{N}_]*/iu;
+export const securitySensitive = (text) => SECURITY.test(text) || secretShaped(text);
 
 // The keyword parrot's vocabulary: CHARTER §2 gate categories and §6 tripwires,
 // and nothing else. The bucket (hit / no hit) is fixed at ask time, so the
@@ -201,17 +213,21 @@ async function shadow(argv) {
   try { proposal = readFileSync(file, 'utf8'); } catch { return say('proposal file unreadable; nothing asked'); }
   if (!proposal.trim()) return say('empty proposal; nothing asked');
   if (Buffer.byteLength(proposal) > MAX_PROPOSAL_BYTES) return say(`proposal over ${MAX_PROPOSAL_BYTES} bytes; nothing asked`);
-  if (secretShaped(proposal)) return say('proposal carries a secret-shaped string; not sent to Jev');
+  const hash = sha256(proposal);
+  const askedAt = new Date(cfg.now).toISOString();
+  const logId = `jev-council/${hash.slice(0, 12)}/${askedAt.replace(/[-:.]/g, '')}`;
+  if (securitySensitive(proposal)) {
+    adaugaConsiliu(cfg.journal, { kind: 'council', log_id: logId, proposal_sha256: hash, asked_at: askedAt, skipped: 'security', outcome: null });
+    return say('proposal touches security; not sent to Jev (skipped row written)');
+  }
 
   const k = loadKey(cfg.keyFile);
   if (!k.key) return say(k.why);
 
-  const hash = sha256(proposal);
-  const askedAt = new Date(cfg.now).toISOString();
   const kw = keywordClasses(proposal);
   const base = {
     kind: 'council',
-    log_id: `jev-council/${hash.slice(0, 12)}/${askedAt.replace(/[-:.]/g, '')}`,
+    log_id: logId,
     proposal_sha256: hash,
     asked_at: askedAt,
     keyword_hit: kw.length > 0,

@@ -111,8 +111,11 @@ Approved by Alexandru 2026-09-28: «jev design = aprobat. in lucru.»
 - **A Jev failure is not a council failure.** The script always exits 0; a 402
   (the $1 cap), 429, timeout or bad answer becomes an `error` row, or nothing.
 - **It stops by itself** after 2026-10-26 (Europe/Chisinau): no call, no row.
-- It does not send a proposal that is empty, over 24 KiB, or carries a
-  secret-shaped string. The key is read from `/run/agenix/jev-openrouter-key` only.
+- **A proposal that touches security is NOT sent** (secrets, network exposure,
+  vulnerabilities, exploits, credentials, or a secret-shaped string): it leaves a
+  `{skipped:"security"}` row with no text and no probabilities, never scored.
+  Security findings stay in the house. Empty or over-24-KiB proposals are not sent
+  either. The key is read from `/run/agenix/jev-openrouter-key` only.
 
 ### Step 3 — Synthesize
 

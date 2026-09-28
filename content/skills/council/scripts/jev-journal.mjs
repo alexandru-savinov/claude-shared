@@ -301,7 +301,10 @@ export function adaugaConsiliu(cale, rand) {
   if (!/^[0-9a-f]{64}$/.test(String(rand.proposal_sha256))) e('proposal_sha256');
   if (!Number.isFinite(Date.parse(rand.asked_at))) e('asked_at');
   if (rand.outcome !== null) e('un rând nou are outcome null; rezolvarea vine din jurnalul consiliului');
-  if (typeof rand.error === 'string') {
+  if (rand.skipped !== undefined) {
+    if (rand.skipped !== 'security') e('skipped poate fi doar "security"');
+    for (const k of ['probabilities', 'choice', 'confidence', 'proposal', 'keyword_classes', 'error']) if (k in rand) e(`un rând sărit nu poartă ${k}`);
+  } else if (typeof rand.error === 'string') {
     if ('probabilities' in rand) e('un rând de eroare nu poartă probabilități');
   } else {
     if (!CLASE.includes(rand.choice)) e('choice');
@@ -314,7 +317,7 @@ export function adaugaConsiliu(cale, rand) {
 }
 
 const esteConsiliu = (r) => r && r.kind === 'council';
-const inAsteptare = (r) => !r.smoke && !r.error && !r.voided && r.outcome == null;
+const inAsteptare = (r) => !r.smoke && !r.error && !r.skipped && !r.voided && r.outcome == null;
 
 // Jurnalele consiliului care poartă textul propunerii (de la #11 încoace).
 export function citesteLoguri(dir) {
@@ -376,11 +379,12 @@ export function raportConsiliu(randuri) {
   const toate = ultimele(randuri.filter(esteConsiliu));
   const smoke = toate.filter(r => r.smoke).length;
   const erori = toate.filter(r => !r.smoke && r.error).length;
+  const sarite = toate.filter(r => !r.smoke && r.skipped === 'security').length;
   const anulate = toate.filter(r => !r.smoke && r.voided).length;
   const asteptare = toate.filter(r => inAsteptare(r)).length;
-  const rez = toate.filter(r => !r.smoke && !r.error && !r.voided && CLASE.includes(r.outcome) && r.probabilities);
+  const rez = toate.filter(r => !r.smoke && !r.error && !r.skipped && !r.voided && CLASE.includes(r.outcome) && r.probabilities);
   const n = rez.length;
-  const out = { n, smoke, erori, anulate, asteptare, pragTotal: PRAG_TOTAL, pragClasa: PRAG_GALEATA };
+  const out = { n, smoke, erori, sarite, anulate, asteptare, pragTotal: PRAG_TOTAL, pragClasa: PRAG_GALEATA };
   if (!n) return { ...out, destul: false, verde: false, clase: [] };
 
   const pi = rate(rez);
@@ -413,7 +417,7 @@ function sectiuneConsiliu(randuri) {
   console.log('');
   console.log('jev-journal — CONSILIU: Jev ghicește verdictul consiliului întreg (3 clase)');
   console.log(`praguri (declarate): minim ${r.pragTotal} rânduri rezolvate comun · minim ${r.pragClasa} rezultate pe clasă · BSS strict > ${PRAG_BSS.toFixed(3)} față de AMBII papagali, și log loss sub amândoi`);
-  console.log(`rezolvate: ${r.n} · în așteptare: ${r.asteptare} · anulate: ${r.anulate} · erori: ${r.erori} · smoke (niciodată scorate): ${r.smoke}`);
+  console.log(`rezolvate: ${r.n} · în așteptare: ${r.asteptare} · anulate: ${r.anulate} · erori: ${r.erori} · sărite (securitate): ${r.sarite} · smoke (niciodată scorate): ${r.smoke}`);
   console.log('onest: la n≈25 pe 2026-10-26 se pot judeca doar „escalate-to-human" și scorul comun; proceed (~1,6 așteptate) și block (~3,2) nu.');
   if (!r.n) {
     console.log('VERDICT CONSILIU: NEJUDECAT: n insuficient (0 rânduri rezolvate). Tăcere, nu verde.');
