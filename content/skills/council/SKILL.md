@@ -59,16 +59,34 @@ Each assessor must return its JSON section (see `schema.md`).
 
 ### Step 3 — Synthesize
 
-Run `scripts/synthesize.mjs` with the three assessor JSON outputs:
+**The proposal reaches the synthesizer through a FILE, never through the shell
+command.** Proposals contain backticks, `$(...)` and quotes; inlined in a shell
+string they get interpreted or break the command. Write the verbatim proposal
+text to a file with the Write tool, then pass `--proposal-file <path>`:
 
 ```bash
+# 1. With the Write tool (not echo/heredoc), write the verbatim proposal to
+#    e.g. /tmp/council-proposal.txt
+# 2. Then:
 node scripts/synthesize.mjs \
-  --opportunity '{"opportunity": {...}}' \
-  --risk        '{"risk": {...}}' \
-  --compliance  '{"compliance": {...}, "tripwires_fired": [...]}'
+  --proposal-file   /tmp/council-proposal.txt \
+  --opportunity-file /tmp/council-opportunity.json \
+  --risk-file        /tmp/council-risk.json \
+  --compliance-file  /tmp/council-compliance.json
 ```
 
-Or use `--opportunity-file`, `--risk-file`, `--compliance-file` for file inputs.
+The assessor JSONs can also be passed inline (`--opportunity '<json>'`, `--risk`,
+`--compliance`), but files are safer for the same reason.
+
+Keep stderr separate from stdout (do NOT use `2>&1`): stdout is the verdict JSON,
+stderr carries warnings and the `Logged to:` line, and mixing them makes the
+verdict unparseable.
+
+The file text is logged verbatim and takes precedence over any `proposal` field
+in the assessor JSONs; if one differs, the record carries `proposal_mismatch: true`.
+If no proposal is given at all, the verdict is still logged and printed with
+`proposal_missing: true` and a stderr warning. `--proposal <string>` still works
+for backward compatibility but should not be used for new calls.
 
 The script applies the decision rules, writes a log record to
 `~/.claude/index/council/<log_id>.json`, and prints the full verdict JSON.
@@ -134,7 +152,18 @@ Present the verdict clearly:
 }
 ```
 
-**Synthesis:**
+**Synthesis:** the proposal text above is written verbatim (Write tool) to
+`/tmp/council-proposal.txt`, the three outputs to `/tmp/council-{opportunity,risk,compliance}.json`, then:
+
+```bash
+node scripts/synthesize.mjs \
+  --proposal-file   /tmp/council-proposal.txt \
+  --opportunity-file /tmp/council-opportunity.json \
+  --risk-file        /tmp/council-risk.json \
+  --compliance-file  /tmp/council-compliance.json
+```
+
+stdout (stderr kept separate):
 ```json
 {
   "proposal": "Append the current UTC timestamp to ~/.claude/index/council/heartbeat.log",

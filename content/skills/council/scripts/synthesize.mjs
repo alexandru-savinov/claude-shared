@@ -9,6 +9,18 @@
  *   --risk        <json-string>  OR  --risk-file        <path>
  *   --compliance  <json-string>  OR  --compliance-file  <path>
  *
+ * Proposal (the text the council judged; logged verbatim):
+ *   --proposal-file <path>   PREFERRED. The file contents are logged byte-for-byte
+ *                            and take PRECEDENCE over any `proposal` field inside
+ *                            the assessor JSONs. Write the file with an editor or
+ *                            the Write tool; never inline proposal text in a shell
+ *                            command.
+ *   --proposal <string>      Kept for backward compatibility only.
+ *   If an assessor `proposal` field differs from the file, the file text is logged
+ *   and the record carries `proposal_mismatch: true`.
+ *   If no proposal is given at all, the verdict is still logged and printed with
+ *   `proposal_missing: true` and one stderr warning (exit status unaffected).
+ *
  * Decision rules (precedence):
  *   1. compliance.allowed === false  →  block
  *   2. risk.tier >= medium OR any §2 human-gate category in tripwires_fired
@@ -32,9 +44,11 @@ function usage() {
   console.error(`
 Usage:
   synthesize.mjs --opportunity <json> --risk <json> --compliance <json>
-  synthesize.mjs --opportunity-file <path> --risk-file <path> --compliance-file <path>
+  synthesize.mjs --opportunity-file <path> --risk-file <path> --compliance-file <path> \\
+                 --proposal-file <path>
 
   JSON inputs can be mixed (some inline, some file).
+  Pass the proposal as --proposal-file; never inline it in the shell command.
 `);
   process.exit(1);
 }
@@ -202,7 +216,7 @@ function synthesize(opportunity, risk, compliance) {
 // Logging
 // ---------------------------------------------------------------------------
 
-function writeLog(verdict, proposal) {
+function writeLog(verdict, proposalMeta) {
   const logDir = join(homedir(), '.claude', 'index', 'council');
   if (!existsSync(logDir)) {
     mkdirSync(logDir, { recursive: true });
@@ -217,7 +231,7 @@ function writeLog(verdict, proposal) {
   }
 
   const record = {
-    proposal,
+    ...proposalMeta,
     ...verdict,
   };
 
@@ -243,13 +257,40 @@ function main() {
     usage();
   }
 
-  // Extract the original proposal from whichever input carries it (optional)
-  const proposal =
-    opportunity?.proposal ||
-    risk?.proposal ||
-    compliance?.proposal ||
-    args['proposal'] ||
-    '(proposal not provided in assessor inputs)';
+  // Resolve the proposal text that gets logged.
+  //   1. --proposal-file (verbatim bytes) wins over everything.
+  //   2. else an assessor `proposal` field, else --proposal (legacy order).
+  //   3. else proposal_missing: still log and print the verdict.
+  const assessorProposals = [opportunity?.proposal, risk?.proposal, compliance?.proposal]
+    .filter(p => typeof p === 'string' && p.length > 0);
+
+  let proposalText = null;
+  if (args['proposal-file']) {
+    try {
+      proposalText = readFileSync(args['proposal-file'], 'utf8');
+    } catch (e) {
+      console.error(`Input error: cannot read --proposal-file (${args['proposal-file']}): ${e.message}`);
+      usage();
+    }
+  }
+
+  const proposalMeta = {};
+  if (proposalText !== null && proposalText.trim().length > 0) {
+    proposalMeta.proposal = proposalText;
+    // Compare ignoring only leading/trailing whitespace (a file usually ends in a newline).
+    if (assessorProposals.some(p => p.trim() !== proposalText.trim())) {
+      proposalMeta.proposal_mismatch = true;
+      console.warn('WARNING: an assessor `proposal` field differs from --proposal-file; logging the file text.');
+    }
+  } else if (assessorProposals.length > 0) {
+    proposalMeta.proposal = assessorProposals[0];
+  } else if (typeof args['proposal'] === 'string' && args['proposal'].length > 0) {
+    proposalMeta.proposal = args['proposal'];
+  } else {
+    proposalMeta.proposal = '(proposal not provided)';
+    proposalMeta.proposal_missing = true;
+    console.warn('WARNING: no proposal provided (use --proposal-file); verdict logged with proposal_missing: true.');
+  }
 
   let verdict;
   try {
@@ -261,16 +302,16 @@ function main() {
 
   let logPath;
   try {
-    logPath = writeLog(verdict, proposal);
+    logPath = writeLog(verdict, proposalMeta);
   } catch (e) {
     console.error(`Logging error: ${e.message}`);
     // Don't block the verdict output for a log failure — print the verdict then exit non-zero
-    const output = { proposal, ...verdict };
+    const output = { ...proposalMeta, ...verdict };
     console.log(JSON.stringify(output, null, 2));
     process.exit(3);
   }
 
-  const output = { proposal, ...verdict };
+  const output = { ...proposalMeta, ...verdict };
   console.log(JSON.stringify(output, null, 2));
   process.stderr.write(`Logged to: ${logPath}\n`);
 }

@@ -6,16 +6,38 @@
  * decision for each. Exits 0 if all pass, non-zero on any failure.
  *
  * Pure Node, no npm deps.
+ *
+ * Isolation: every synthesize.mjs run gets HOME=<temp dir>, so its log records
+ * land in <temp>/.claude/index/council and are removed at the end. The runner
+ * only COUNTS the real ~/.claude/index/council before and after (assertion iv);
+ * it never writes there.
  */
 
-import { readFileSync, existsSync } from 'fs';
-import { execFileSync } from 'child_process';
+import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, writeFileSync } from 'fs';
+import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { homedir, tmpdir } from 'os';
+import { randomBytes } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SYNTH = join(__dirname, '..', 'scripts', 'synthesize.mjs');
 const TESTS_DIR = __dirname;
+
+// Real council log dir of whoever runs the runner. Read-only: counted, never written.
+const REAL_COUNCIL_DIR = join(homedir(), '.claude', 'index', 'council');
+function countDir(dir) {
+  return existsSync(dir) ? readdirSync(dir).length : 0;
+}
+const REAL_COUNT_BEFORE = countDir(REAL_COUNCIL_DIR);
+
+// Isolated HOME for every synthesize.mjs run.
+const TMP_HOME = mkdtempSync(join(tmpdir(), 'council-test-home-'));
+const TMP_COUNCIL_DIR = join(TMP_HOME, '.claude', 'index', 'council');
+function cleanupTmpHome() {
+  try { rmSync(TMP_HOME, { recursive: true, force: true }); } catch { /* best effort */ }
+}
+process.on('exit', cleanupTmpHome);
 
 // ---------------------------------------------------------------------------
 // Test fixtures — each specifies what to pass to synthesize.mjs
@@ -114,28 +136,27 @@ function splitIntoAssessorInputs(fixture) {
  * Run synthesize.mjs and return { verdict, exitCode, stderr }.
  * Never throws — caller inspects exitCode to determine pass/fail.
  */
-function runSynthesize(opportunity, risk, compliance) {
-  try {
-    const result = execFileSync(
-      process.execPath,
-      [
-        SYNTH,
-        '--opportunity', JSON.stringify(opportunity),
-        '--risk',        JSON.stringify(risk),
-        '--compliance',  JSON.stringify(compliance),
-      ],
-      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-    );
-    return { verdict: JSON.parse(result), exitCode: 0, stderr: '' };
-  } catch (e) {
-    // execFileSync throws on non-zero exit. e.status is the exit code.
-    return {
-      verdict: null,
-      exitCode: e.status ?? 1,
-      stderr: e.stderr ?? '',
-      stdout: e.stdout ?? '',
-    };
+function runSynthesize(opportunity, risk, compliance, extraArgs = []) {
+  // No shell: argv goes straight to node. HOME is the isolated temp dir.
+  const r = spawnSync(
+    process.execPath,
+    [
+      SYNTH,
+      '--opportunity', JSON.stringify(opportunity),
+      '--risk',        JSON.stringify(risk),
+      '--compliance',  JSON.stringify(compliance),
+      ...extraArgs,
+    ],
+    { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, HOME: TMP_HOME } }
+  );
+  const exitCode = r.status ?? 1;
+  const stdout = r.stdout ?? '';
+  const stderr = r.stderr ?? '';
+  let verdict = null;
+  if (exitCode === 0) {
+    try { verdict = JSON.parse(stdout); } catch { verdict = null; }
   }
+  return { verdict, exitCode, stderr, stdout };
 }
 
 // ---------------------------------------------------------------------------
@@ -213,12 +234,12 @@ for (const fixture of FIXTURES) {
       console.log(`    FAIL — expected verdict "${fixture.expectedDecision}", got non-zero exit`);
       failed++;
       results.push({ name: fixture.name, status: 'FAIL', exitCode, error: 'unexpected non-zero exit' });
-    } else if (verdict.decision !== fixture.expectedDecision) {
-      console.log(`    result:   ${verdict.decision}`);
-      console.log(`    FAIL — expected "${fixture.expectedDecision}", got "${verdict.decision}"`);
+    } else if (verdict?.decision !== fixture.expectedDecision) {
+      console.log(`    result:   ${verdict?.decision ?? '(unparseable stdout)'}`);
+      console.log(`    FAIL — expected "${fixture.expectedDecision}", got "${verdict?.decision}"`);
       console.log(`    verdict:  ${JSON.stringify(verdict, null, 4).split('\n').join('\n              ')}`);
       failed++;
-      results.push({ name: fixture.name, status: 'FAIL', expected: fixture.expectedDecision, got: verdict.decision });
+      results.push({ name: fixture.name, status: 'FAIL', expected: fixture.expectedDecision, got: verdict?.decision });
     } else {
       console.log(`    result:   ${verdict.decision}`);
       console.log(`    log_id:   ${verdict.log_id}`);
@@ -229,6 +250,105 @@ for (const fixture of FIXTURES) {
   }
   console.log('');
 }
+
+// ---------------------------------------------------------------------------
+// Proposal-handling assertions (i)–(iv)
+// ---------------------------------------------------------------------------
+
+function check(name, ok, detail) {
+  if (ok) {
+    console.log(`    PASS  ${name}`);
+    passed++;
+    results.push({ name, status: 'PASS' });
+  } else {
+    console.log(`    FAIL  ${name}${detail ? ` — ${detail}` : ''}`);
+    failed++;
+    results.push({ name, status: 'FAIL', error: detail });
+  }
+}
+
+function readLogRecord(verdict) {
+  if (!verdict?.log_id) return null;
+  const p = join(TMP_COUNCIL_DIR, `${verdict.log_id}.json`);
+  try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
+}
+
+// Base assessor inputs: fixture A (low risk) with every `proposal` field removed.
+const base = loadFixture(join(TESTS_DIR, 'fixture-a-low-risk.json'));
+const bareInputs = () => ({
+  opportunity: { opportunity: base.opportunity },
+  risk:        { risk: base.risk },
+  compliance:  { compliance: base.compliance, tripwires_fired: base.tripwires_fired },
+});
+
+// (i) No proposal at all → exit 0, parseable JSON, proposal_missing: true.
+console.log('  Fixture (i) — no proposal given anywhere');
+{
+  const { opportunity, risk, compliance } = bareInputs();
+  const { verdict, exitCode, stderr } = runSynthesize(opportunity, risk, compliance);
+  check('(i) exit 0', exitCode === 0, `exit ${exitCode}: ${stderr.trim().split('\n')[0]}`);
+  check('(i) stdout is parseable JSON', verdict !== null);
+  check('(i) stdout proposal_missing === true', verdict?.proposal_missing === true);
+  check('(i) decision unchanged (proceed)', verdict?.decision === 'proceed', `got ${verdict?.decision}`);
+  const rec = readLogRecord(verdict);
+  check('(i) log record written with proposal_missing === true', rec?.proposal_missing === true);
+  const warnings = stderr.split('\n').filter(l => l.includes('no proposal provided'));
+  check('(i) exactly one stderr warning', warnings.length === 1, `got ${warnings.length}`);
+}
+console.log('');
+
+// (ii) --proposal-file with shell metacharacters → logged byte-for-byte; the
+//      command substitution inside it must never run (canary must not exist).
+console.log('  Fixture (ii) — --proposal-file with shell metacharacters');
+{
+  const canary = `/tmp/PWNED-${randomBytes(6).toString('hex')}`;
+  const nasty =
+    'Run `touch ' + canary + '` and $(touch ' + canary + ') then "double" and \'single\' quotes\n' +
+    'line two; echo $HOME && ls | cat > /dev/null\n' +
+    '\ttab, backslash \\ and a trailing newline\n';
+  const pfile = join(TMP_HOME, 'proposal-ii.txt');
+  writeFileSync(pfile, nasty, 'utf8');
+  const { opportunity, risk, compliance } = bareInputs();
+  const { verdict, exitCode, stderr } = runSynthesize(opportunity, risk, compliance, ['--proposal-file', pfile]);
+  check('(ii) exit 0', exitCode === 0, `exit ${exitCode}: ${stderr.trim().split('\n')[0]}`);
+  check('(ii) stdout proposal byte-for-byte', verdict?.proposal === nasty);
+  const rec = readLogRecord(verdict);
+  check('(ii) log record proposal byte-for-byte', rec?.proposal === nasty,
+    `logged ${JSON.stringify(rec?.proposal)}`);
+  check('(ii) no proposal_missing / proposal_mismatch flags',
+    rec !== null && rec.proposal_missing === undefined && rec.proposal_mismatch === undefined);
+  check('(ii) canary file does NOT exist', !existsSync(canary), `${canary} exists`);
+  try { rmSync(canary, { force: true }); } catch { /* none expected */ }
+}
+console.log('');
+
+// (iii) Assessor proposal field differs from the file → file text wins, mismatch flagged.
+console.log('  Fixture (iii) — assessor proposal differs from --proposal-file');
+{
+  const fileText = 'Proposal as written to the file.\n';
+  const pfile = join(TMP_HOME, 'proposal-iii.txt');
+  writeFileSync(pfile, fileText, 'utf8');
+  const { opportunity, risk, compliance } = bareInputs();
+  opportunity.proposal = 'A paraphrase the assessor made up.';
+  const { verdict, exitCode, stderr } = runSynthesize(opportunity, risk, compliance, ['--proposal-file', pfile]);
+  check('(iii) exit 0', exitCode === 0, `exit ${exitCode}: ${stderr.trim().split('\n')[0]}`);
+  const rec = readLogRecord(verdict);
+  check('(iii) logged proposal is the file text', rec?.proposal === fileText, `logged ${JSON.stringify(rec?.proposal)}`);
+  check('(iii) proposal_mismatch === true', rec?.proposal_mismatch === true);
+  check('(iii) stdout carries the same', verdict?.proposal === fileText && verdict?.proposal_mismatch === true);
+}
+console.log('');
+
+// (iv) The real council log dir was not written to by this runner.
+console.log('  Assertion (iv) — real ~/.claude/index/council untouched');
+{
+  const after = countDir(REAL_COUNCIL_DIR);
+  console.log(`    real dir: ${REAL_COUNCIL_DIR}`);
+  console.log(`    count before: ${REAL_COUNT_BEFORE}  after: ${after}`);
+  check('(iv) real council file count unchanged', after === REAL_COUNT_BEFORE,
+    `before ${REAL_COUNT_BEFORE}, after ${after}`);
+}
+console.log('');
 
 // ---------------------------------------------------------------------------
 // Summary
