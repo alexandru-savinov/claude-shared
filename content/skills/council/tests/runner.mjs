@@ -13,7 +13,7 @@
  * it never writes there.
  */
 
-import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, writeFileSync } from 'fs';
+import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, writeFileSync, mkdirSync, symlinkSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -336,6 +336,184 @@ console.log('  Fixture (iii) — assessor proposal differs from --proposal-file'
   check('(iii) logged proposal is the file text', rec?.proposal === fileText, `logged ${JSON.stringify(rec?.proposal)}`);
   check('(iii) proposal_mismatch === true', rec?.proposal_mismatch === true);
   check('(iii) stdout carries the same', verdict?.proposal === fileText && verdict?.proposal_mismatch === true);
+}
+console.log('');
+
+// ---------------------------------------------------------------------------
+// Shadow assertions (sq093 Step B): the shadow is recorded, it never decides.
+// ---------------------------------------------------------------------------
+
+function splitFixtureFile(name) {
+  const f = loadFixture(join(TESTS_DIR, name));
+  return {
+    opportunity: { opportunity: f.opportunity },
+    risk:        { risk: f.risk },
+    compliance:  { compliance: f.compliance, tripwires_fired: f.tripwires_fired },
+  };
+}
+
+function writeShadowFiles(tag, inputs, overrides = {}) {
+  const paths = {};
+  for (const k of ['opportunity', 'risk', 'compliance']) {
+    const p = join(TMP_HOME, `shadow-${tag}-${k}.json`);
+    writeFileSync(p, overrides[k] ?? JSON.stringify(inputs[k]), 'utf8');
+    paths[k] = p;
+  }
+  return paths;
+}
+
+function shadowArgs(paths) {
+  return [
+    '--shadow-opportunity-file', paths.opportunity,
+    '--shadow-risk-file',        paths.risk,
+    '--shadow-compliance-file',  paths.compliance,
+  ];
+}
+
+// (v) The shadow DISAGREES, in the dangerous direction: the full council blocks
+//     (fixture C), the cheap-tier shadow would proceed (fixture A inputs).
+//     The decision must stay the full council's; the shadow is only recorded.
+console.log('  Fixture (v) — shadow disagrees with the full council (full block, shadow proceed)');
+{
+  const full = splitFixtureFile('fixture-c-compliance-violation.json');
+  const sp = writeShadowFiles('v', splitFixtureFile('fixture-a-low-risk.json'));
+  const { verdict, exitCode, stderr } = runSynthesize(full.opportunity, full.risk, full.compliance,
+    [...shadowArgs(sp), '--shadow-latency-ms', '41234']);
+  check('(v) exit 0', exitCode === 0, `exit ${exitCode}: ${stderr.trim().split('\n')[0]}`);
+  check('(v) stdout decision is the full council\'s (block)', verdict?.decision === 'block', `got ${verdict?.decision}`);
+  check('(v) stdout carries no shadow (log only)', verdict !== null && !('shadow' in verdict));
+  const rec = readLogRecord(verdict);
+  check('(v) logged decision is the full council\'s (block)', rec?.decision === 'block', `got ${rec?.decision}`);
+  check('(v) shadow.decision recorded as proceed', rec?.shadow?.decision === 'proceed',
+    `got ${JSON.stringify(rec?.shadow)}`);
+  check('(v) shadow.tripwires_fired recorded', Array.isArray(rec?.shadow?.tripwires_fired));
+  check('(v) shadow.latency_ms recorded', rec?.shadow?.latency_ms === 41234);
+  check('(v) full tripwires unchanged', JSON.stringify(rec?.tripwires_fired) ===
+    JSON.stringify(['secrets', 'network-exposure', 'outward', 'irreversible']));
+}
+console.log('');
+
+// (vi) Invalid shadow input: the decision is unchanged, shadow.error is set, exit 0.
+console.log('  Fixture (vi) — invalid shadow input');
+{
+  const full = splitFixtureFile('fixture-a-low-risk.json');
+  // (vi-a) unparseable JSON in one shadow file
+  const spBad = writeShadowFiles('vi', full, { risk: '{ not json' });
+  let r = runSynthesize(full.opportunity, full.risk, full.compliance, shadowArgs(spBad));
+  check('(vi-a) exit 0', r.exitCode === 0, `exit ${r.exitCode}`);
+  check('(vi-a) decision unchanged (proceed)', r.verdict?.decision === 'proceed', `got ${r.verdict?.decision}`);
+  let rec = readLogRecord(r.verdict);
+  check('(vi-a) shadow.error set', typeof rec?.shadow?.error === 'string' && rec.shadow.error.length > 0,
+    `got ${JSON.stringify(rec?.shadow)}`);
+  check('(vi-a) no shadow.decision', rec !== null && rec.shadow?.decision === undefined);
+  // (vi-b) a shadow whose compliance.allowed is malformed (the full council would exit 2 on it)
+  const spMal = writeShadowFiles('vib', full, { compliance: JSON.stringify({ compliance: { allowed: 'true' } }) });
+  r = runSynthesize(full.opportunity, full.risk, full.compliance, shadowArgs(spMal));
+  rec = readLogRecord(r.verdict);
+  check('(vi-b) malformed shadow: exit 0, decision proceed, shadow.error',
+    r.exitCode === 0 && r.verdict?.decision === 'proceed' && typeof rec?.shadow?.error === 'string',
+    `exit ${r.exitCode}, ${r.verdict?.decision}, ${JSON.stringify(rec?.shadow)}`);
+  // (vi-c) only one of the three shadow flags given
+  r = runSynthesize(full.opportunity, full.risk, full.compliance,
+    ['--shadow-opportunity-file', spBad.opportunity]);
+  rec = readLogRecord(r.verdict);
+  check('(vi-c) partial shadow flags: exit 0, decision proceed, shadow.error names the missing flags',
+    r.exitCode === 0 && r.verdict?.decision === 'proceed' && /shadow-risk-file/.test(rec?.shadow?.error ?? ''),
+    `exit ${r.exitCode}, ${JSON.stringify(rec?.shadow)}`);
+  // (vi-d) a nonexistent shadow file
+  r = runSynthesize(full.opportunity, full.risk, full.compliance,
+    shadowArgs({ ...spBad, risk: spMal.risk, compliance: join(TMP_HOME, 'does-not-exist.json') }));
+  rec = readLogRecord(r.verdict);
+  check('(vi-d) missing shadow file: exit 0, decision proceed, shadow.error',
+    r.exitCode === 0 && r.verdict?.decision === 'proceed' && typeof rec?.shadow?.error === 'string',
+    `exit ${r.exitCode}, ${JSON.stringify(rec?.shadow)}`);
+}
+console.log('');
+
+// (vii) No shadow flags: the record is exactly today's record (= stdout), no shadow key.
+console.log('  Fixture (vii) — no shadow flags: today\'s behaviour');
+{
+  const full = splitFixtureFile('fixture-b-high-risk.json');
+  const pfile = join(TMP_HOME, 'proposal-vii.txt');
+  writeFileSync(pfile, 'Proposal for fixture (vii).\n', 'utf8');
+  const { verdict, exitCode, stdout } = runSynthesize(full.opportunity, full.risk, full.compliance, ['--proposal-file', pfile]);
+  check('(vii) exit 0, decision escalate-to-human', exitCode === 0 && verdict?.decision === 'escalate-to-human');
+  const rec = readLogRecord(verdict);
+  check('(vii) log record has no shadow key', rec !== null && !('shadow' in rec));
+  check('(vii) log record equals the stdout verdict (as before Step B)',
+    rec !== null && JSON.stringify(rec) === JSON.stringify(JSON.parse(stdout)));
+  check('(vii) record keys are exactly today\'s', rec !== null && JSON.stringify(Object.keys(rec)) ===
+    JSON.stringify(['proposal', 'opportunity', 'risk', 'compliance', 'decision', 'tripwires_fired', 'log_id', 'timestamp']),
+    `keys ${JSON.stringify(rec && Object.keys(rec))}`);
+}
+console.log('');
+
+// (viii) The CLI still runs when reached through a symlink (the live skill path is
+//        ~/.claude/skills/council -> /nix/store/...). A naive import.meta main check
+//        would print nothing here.
+console.log('  Fixture (viii) — synthesize.mjs invoked through a symlink');
+{
+  const linkDir = join(TMP_HOME, 'linked-skill');
+  symlinkSync(join(__dirname, '..'), linkDir);
+  const full = splitFixtureFile('fixture-a-low-risk.json');
+  const r = spawnSync(process.execPath, [join(linkDir, 'scripts', 'synthesize.mjs'),
+    '--opportunity', JSON.stringify(full.opportunity), '--risk', JSON.stringify(full.risk),
+    '--compliance', JSON.stringify(full.compliance)],
+    { encoding: 'utf8', env: { ...process.env, HOME: TMP_HOME } });
+  let v = null; try { v = JSON.parse(r.stdout); } catch { /* checked below */ }
+  check('(viii) via symlink: exit 0 and a proceed verdict on stdout', r.status === 0 && v?.decision === 'proceed',
+    `exit ${r.status}, stdout ${JSON.stringify((r.stdout ?? '').slice(0, 80))}`);
+}
+console.log('');
+
+// (ix) shadow-report.mjs on a synthetic log dir (never the real one).
+console.log('  Fixture (ix) — shadow-report.mjs counts and gate');
+{
+  const REPORT = join(__dirname, '..', 'scripts', 'shadow-report.mjs');
+  const dir = join(TMP_HOME, 'report-dir');
+  mkdirSync(dir, { recursive: true });
+  const fixA = loadFixture(join(TESTS_DIR, 'fixture-a-low-risk.json'));
+  let k = 0;
+  const put = (rec) => writeFileSync(join(dir, `council-test-${String(k++).padStart(3, '0')}.json`), JSON.stringify(rec));
+  const ts = (d) => `2026-10-${String(d).padStart(2, '0')}T12:00:00.000Z`;
+  put({ proposal: 'p-agree', decision: 'escalate-to-human', timestamp: ts(1), shadow: { decision: 'escalate-to-human', tripwires_fired: [], latency_ms: 30000 } });
+  put({ proposal: 'p-looser', decision: 'escalate-to-human', timestamp: ts(1), shadow: { decision: 'proceed', tripwires_fired: [], latency_ms: 50000 } });
+  put({ proposal: 'p-stricter', decision: 'proceed', timestamp: ts(2), shadow: { decision: 'escalate-to-human', tripwires_fired: ['x'] } });
+  put({ proposal: 'p-both-proceed', decision: 'proceed', timestamp: ts(2), shadow: { decision: 'proceed', tripwires_fired: [] } });
+  put({ proposal: 'p-both-proceed', decision: 'proceed', timestamp: ts(3), shadow: { decision: 'proceed', tripwires_fired: [] } }); // duplicate
+  put({ proposal: 'p-err', decision: 'proceed', timestamp: ts(3), shadow: { error: 'bad' } });
+  put({ proposal: '(proposal not provided)', proposal_missing: true, decision: 'proceed', timestamp: ts(3), shadow: { decision: 'proceed' } });
+  put({ proposal: fixA.proposal, decision: 'proceed', timestamp: ts(3), shadow: { decision: 'proceed' } });
+  put({ proposal: 'p-fast', path: 'fast', decision: 'proceed', timestamp: ts(3), shadow: { decision: 'proceed' } });
+  put({ proposal: 'p-noshadow', decision: 'proceed', timestamp: ts(3) });
+  const runReport = (d, today) => {
+    const r = spawnSync(process.execPath, [REPORT, '--dir', d, '--today', today, '--json'], { encoding: 'utf8' });
+    try { return { status: r.status, j: JSON.parse(r.stdout) }; } catch { return { status: r.status, j: null }; }
+  };
+  const { status, j } = runReport(dir, '2026-10-05');
+  check('(ix) report exit 0', status === 0);
+  check('(ix) n = 4 distinct text-bearing, non-fixture, path full', j?.n === 4, `n ${j?.n}`);
+  check('(ix) agreement 2, looser 1, stricter 1',
+    j?.agree === 2 && j?.looser === 1 && j?.stricter === 1, JSON.stringify(j && { a: j.agree, l: j.looser, s: j.stricter }));
+  check('(ix) excluded text-less 1, fixture 1, not-full 1; shadow errors 1',
+    j?.excluded?.text_less === 1 && j?.excluded?.fixture === 1 && j?.excluded?.not_full_path === 1 && j?.shadow_errors === 1,
+    JSON.stringify(j && { ...j.excluded, e: j.shadow_errors }));
+  check('(ix) latency p90 over 2 samples = 50000', j?.latency_p90_ms === 50000 && j?.latency_samples === 2);
+  check('(ix) gate says insufficient n', /^insufficient n/.test(j?.gate ?? ''), j?.gate);
+  const late = runReport(dir, '2026-12-28').j;
+  check('(ix) at the revisit date the decision goes to him',
+    /revisit date 2026-12-28 reached .*insufficient n.*Alexandru/.test(late?.gate ?? ''), late?.gate);
+  // Positive arm: 30 distinct fast-eligible cases over >= 14 days → gate met.
+  const dir2 = join(TMP_HOME, 'report-dir-2');
+  mkdirSync(dir2, { recursive: true });
+  for (let i = 0; i < 30; i++) {
+    writeFileSync(join(dir2, `c-${i}.json`), JSON.stringify({ proposal: `q-${i}`, decision: 'proceed',
+      timestamp: `2026-10-${String(1 + (i % 20)).padStart(2, '0')}T00:00:00.000Z`, shadow: { decision: 'proceed' } }));
+  }
+  const met = runReport(dir2, '2026-10-20').j;
+  check('(ix) 30 fast-eligible over >= 14 days: gate met', /^gate met/.test(met?.gate ?? ''), met?.gate);
+  const early = runReport(dir2, '2026-10-10').j;
+  check('(ix) 30 fast-eligible but < 14 days: insufficient time', /^insufficient time/.test(early?.gate ?? ''), early?.gate);
 }
 console.log('');
 

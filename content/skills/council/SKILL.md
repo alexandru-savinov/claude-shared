@@ -57,6 +57,36 @@ Replace `{{PROPOSAL}}` in each prompt with the verbatim proposed action.
 
 Each assessor must return its JSON section (see `schema.md`).
 
+#### Step 2b — the shadow trio (sq093 Step B: measurement only)
+
+In the SAME message that launches the three full assessors, also launch the same
+three prompts a second time on the cheap tier: `Agent(model: "sonnet", ...)`, same
+verbatim `{{PROPOSAL}}`, each in its own context. Six independent agents, launched
+together; no shadow agent sees any other agent's output, and no full assessor sees a
+shadow output.
+
+- **Effort:** the Agent tool has a `model` parameter but no per-call effort
+  parameter, so the shadow runs at Sonnet's default effort. The design's "effort low"
+  is not reachable from this call; this is a known gap, not a silent substitution.
+- **Latency (optional):** note the wall time from launching the shadow trio to the
+  last shadow result, if you can observe it, and pass it as `--shadow-latency-ms`.
+  If you cannot observe it, omit the flag; never estimate it.
+- Write each shadow JSON to its own file (Write tool), e.g.
+  `/tmp/council-shadow-{opportunity,risk,compliance}.json`.
+- **The shadow never decides.** Do not read, show or reason from the shadow outputs
+  when surfacing the verdict. The verdict is only the full council's `decision`.
+- **A shadow failure is not a council failure.** If a shadow agent fails or returns
+  garbage, pass what you have (or nothing): synthesize records `shadow.error` and the
+  verdict is unchanged. Never re-run the full council because of the shadow, and
+  never delay Step 4 waiting on a stuck shadow agent: drop the shadow flags instead.
+
+**Gate for the shadow run (design §6.3, resolved 2026-09-28 with bobuk's
+suggestion):** the shadow is judged when **2 weeks have passed since the first
+shadow record AND 30 distinct fast-eligible cases** (shadow `proceed`) are recorded,
+**OR on the revisit date 2026-12-28, whichever comes first.** At the revisit,
+`scripts/shadow-report.mjs` states n and the decision goes to Alexandru. Until then
+the report says `insufficient n`, and nothing is built on the shadow's numbers.
+
 ### Step 3 — Synthesize
 
 **The proposal reaches the synthesizer through a FILE, never through the shell
@@ -72,8 +102,18 @@ node scripts/synthesize.mjs \
   --proposal-file   /tmp/council-proposal.txt \
   --opportunity-file /tmp/council-opportunity.json \
   --risk-file        /tmp/council-risk.json \
-  --compliance-file  /tmp/council-compliance.json
+  --compliance-file  /tmp/council-compliance.json \
+  --shadow-opportunity-file /tmp/council-shadow-opportunity.json \
+  --shadow-risk-file        /tmp/council-shadow-risk.json \
+  --shadow-compliance-file  /tmp/council-shadow-compliance.json
 ```
+
+The `--shadow-*` flags (and the optional `--shadow-latency-ms <n>`) run the shadow
+JSONs through the same decision function and log the result as a `shadow` object
+inside this record: `{ decision, tripwires_fired, latency_ms? }`, or `{ error }` if
+the shadow input is missing, partial or invalid. The shadow is written to the log
+only; stdout and `decision` are exactly what they would be without it. Without any
+`--shadow-*` flag the record has no `shadow` key.
 
 The assessor JSONs can also be passed inline (`--opportunity '<json>'`, `--risk`,
 `--compliance`), but files are safer for the same reason.
@@ -196,7 +236,8 @@ content/skills/council/
     risk.md             — skeptic prompt
     compliance.md       — charter-checker prompt
   scripts/
-    synthesize.mjs      — pure Node synthesis + logging
+    synthesize.mjs      — pure Node synthesis + logging (+ the logged shadow)
+    shadow-report.mjs   — read-only: shadow vs full agreement, looser/stricter, gate
   tests/
     fixture-a-low-risk.json
     fixture-b-high-risk.json

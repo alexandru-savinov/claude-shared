@@ -27,14 +27,24 @@
  *      OR tripwires_fired non-empty                    →  escalate-to-human
  *   3. else                                            →  proceed
  *
+ * Shadow (sq093 Step B, measurement only; it NEVER changes `decision`):
+ *   --shadow-opportunity-file <path>  --shadow-risk-file <path>
+ *   --shadow-compliance-file  <path>  [--shadow-latency-ms <n>]
+ *   The same three assessor prompts, run on the cheap tier. Their JSONs go through
+ *   the SAME synthesize() and the result is logged as `shadow` inside this record
+ *   (log file only; stdout is unchanged). Missing, partial or invalid shadow input
+ *   records `shadow: { error }` and changes nothing else. With no shadow flag at
+ *   all, the record carries no `shadow` key (today's behaviour).
+ *
  * Writes additive log record to ~/.claude/index/council/<log_id>.json
  * Prints the final verdict JSON to stdout.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
+import { fileURLToPath } from 'url';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,7 +124,7 @@ function isHumanGateTriggered(tripwires) {
  * @param {object} compliance   - { compliance: { allowed, veto_reason }, tripwires_fired }
  * @returns {object} verdict
  */
-function synthesize(opportunity, risk, compliance) {
+export function synthesize(opportunity, risk, compliance) {
   // Validate required fields
   if (!opportunity?.opportunity) throw new Error('opportunity input missing .opportunity field');
   if (!risk?.risk) throw new Error('risk input missing .risk field');
@@ -216,7 +226,7 @@ function synthesize(opportunity, risk, compliance) {
 // Logging
 // ---------------------------------------------------------------------------
 
-function writeLog(verdict, proposalMeta) {
+function writeLog(verdict, proposalMeta, shadow) {
   const logDir = join(homedir(), '.claude', 'index', 'council');
   if (!existsSync(logDir)) {
     mkdirSync(logDir, { recursive: true });
@@ -234,9 +244,58 @@ function writeLog(verdict, proposalMeta) {
     ...proposalMeta,
     ...verdict,
   };
+  // The shadow is appended AFTER the verdict fields, so it can never overwrite them.
+  if (shadow !== undefined) record.shadow = shadow;
 
   writeFileSync(logPath, JSON.stringify(record, null, 2), { flag: 'wx' }); // wx = fail if exists
   return logPath;
+}
+
+// ---------------------------------------------------------------------------
+// Shadow (sq093 Step B) — measurement only
+// ---------------------------------------------------------------------------
+
+const SHADOW_FILE_FLAGS = ['shadow-opportunity-file', 'shadow-risk-file', 'shadow-compliance-file'];
+
+/**
+ * Compute the shadow record from the cheap-tier assessor files, using the SAME
+ * synthesize() as the full council. Never throws. The return value is only ever
+ * written as `record.shadow`; it has no path back to the full `decision`.
+ *
+ * @returns {undefined | {decision, tripwires_fired, latency_ms?} | {error}}
+ *          undefined when no shadow flag was given at all.
+ */
+export function computeShadow(args) {
+  const anyGiven = [...SHADOW_FILE_FLAGS, 'shadow-latency-ms'].some(f => f in args);
+  if (!anyGiven) return undefined;
+
+  try {
+    const missing = SHADOW_FILE_FLAGS.filter(f => typeof args[f] !== 'string' || args[f].length === 0);
+    if (missing.length > 0) {
+      throw new Error(`incomplete shadow input: missing ${missing.map(f => `--${f}`).join(', ')}`);
+    }
+    const sOpp  = loadJson('shadow-opportunity', 'shadow-opportunity-file', args, 'shadow opportunity');
+    const sRisk = loadJson('shadow-risk',        'shadow-risk-file',        args, 'shadow risk');
+    const sCmp  = loadJson('shadow-compliance',  'shadow-compliance-file',  args, 'shadow compliance');
+
+    // synthesize() may warn about tripwires on stderr; label those as shadow.
+    const origWarn = console.warn;
+    console.warn = (...a) => origWarn('[shadow]', ...a);
+    let v;
+    try { v = synthesize(sOpp, sRisk, sCmp); } finally { console.warn = origWarn; }
+
+    // Only the decision-relevant fields; the shadow's own log_id/timestamp are discarded.
+    const shadow = { decision: v.decision, tripwires_fired: v.tripwires_fired };
+    if ('shadow-latency-ms' in args) {
+      const n = Number(args['shadow-latency-ms']);
+      if (Number.isFinite(n) && n >= 0) shadow.latency_ms = Math.round(n);
+      else shadow.latency_error = `invalid --shadow-latency-ms: ${JSON.stringify(args['shadow-latency-ms'])}`;
+    }
+    return shadow;
+  } catch (e) {
+    console.warn(`WARNING: shadow not computed (${e.message}); logged as shadow.error. The verdict is unaffected.`);
+    return { error: String(e.message) };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -302,7 +361,7 @@ function main() {
 
   let logPath;
   try {
-    logPath = writeLog(verdict, proposalMeta);
+    logPath = writeLog(verdict, proposalMeta, computeShadow(args));
   } catch (e) {
     console.error(`Logging error: ${e.message}`);
     // Don't block the verdict output for a log failure — print the verdict then exit non-zero
@@ -316,4 +375,18 @@ function main() {
   process.stderr.write(`Logged to: ${logPath}\n`);
 }
 
-main();
+// Run the CLI only when executed directly, so tests and readers can import
+// synthesize(). Compare REAL paths: the skill is reached through symlinks
+// (~/.claude/skills/council -> /nix/store/...), and Node resolves the main
+// module's symlinks for import.meta.url but not for process.argv[1]. A plain
+// string compare would silently skip main() and print nothing.
+function isMain() {
+  try {
+    return Boolean(process.argv[1]) &&
+      realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) main();
