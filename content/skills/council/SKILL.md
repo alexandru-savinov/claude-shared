@@ -41,6 +41,11 @@ optional but always valid to invoke.
 Accept a clear, specific description of the proposed action. If vague, ask for
 clarification before proceeding. The proposal must be specific enough to evaluate.
 
+Once the proposal is settled, write it verbatim to a file with the Write tool
+(e.g. `/tmp/council-proposal.txt`). The SAME file goes to Jev at Step 2b and to
+`synthesize.mjs` at Step 3; Jev's row is matched to the verdict by the sha256 of
+this text, so do not edit the file between the two.
+
 ### Step 2 — Run the three assessors INDEPENDENTLY
 
 Launch three independent sub-agents (or sequential prompts in separate contexts)
@@ -86,6 +91,28 @@ shadow record AND 30 distinct fast-eligible cases** (shadow `proceed`) are recor
 **OR on the revisit date 2026-12-28, whichever comes first.** At the revisit,
 `scripts/shadow-report.mjs` states n and the decision goes to Alexandru. Until then
 the report says `insufficient n`, and nothing is built on the shadow's numbers.
+
+#### Step 2b, second shadow — Jev forecasts the verdict (measurement only)
+
+In the same message, launch Jev in the background (Bash `run_in_background`):
+
+```bash
+node scripts/jev-shadow.mjs --proposal-file /tmp/council-proposal.txt
+```
+
+It asks Jev (TypeSafe's typed decision model, via OpenRouter) one question: which
+verdict will the full council reach, `proceed` / `escalate-to-human` / `block`,
+with probabilities. It writes ONE row (kind `council`) to the Jev experiment
+journal `~/.claude/index/council/jev-journal.jsonl` and nothing else.
+Approved by Alexandru 2026-09-28: «jev design = aprobat. in lucru.»
+
+- **Jev never touches the verdict.** Do not read, show or reason from its answer at
+  Step 4, and never pass it to `synthesize.mjs`. Do not wait for it.
+- **A Jev failure is not a council failure.** The script always exits 0; a 402
+  (the $1 cap), 429, timeout or bad answer becomes an `error` row, or nothing.
+- **It stops by itself** after 2026-10-26 (Europe/Chisinau): no call, no row.
+- It does not send a proposal that is empty, over 24 KiB, or carries a
+  secret-shaped string. The key is read from `/run/agenix/jev-openrouter-key` only.
 
 ### Step 3 — Synthesize
 
@@ -148,6 +175,17 @@ Present the verdict clearly:
   status, tripwires fired. Ask the human to decide. Do NOT proceed unilaterally.
 - **`block`** — state the charter clause violated (veto_reason), decline the
   action, suggest a compliant alternative if one exists.
+
+After the verdict is surfaced, resolve Jev's pending rows against the council
+logs (local files only; a failure here changes nothing):
+
+```bash
+node scripts/jev-journal.mjs resolve-council
+```
+
+A row asked at or after its verdict's timestamp is voided, never scored.
+`node scripts/jev-journal.mjs report` scores Jev against two parrots (base rate;
+tripwire keywords). Under 20 resolved rows it says `NEJUDECAT: n insuficient`.
 
 ---
 
@@ -238,9 +276,12 @@ content/skills/council/
   scripts/
     synthesize.mjs      — pure Node synthesis + logging (+ the logged shadow)
     shadow-report.mjs   — read-only: shadow vs full agreement, looser/stricter, gate
+    jev-shadow.mjs      — Step 2b: Jev forecasts the verdict, one journal row
+    jev-journal.mjs     — the Jev experiment journal: append, resolve, report
   tests/
     fixture-a-low-risk.json
     fixture-b-high-risk.json
     fixture-c-compliance-violation.json
     runner.mjs          — end-to-end test runner (must pass before changes)
+    jev-shadow.test.mjs — Jev shadow closing check, with its local stub
 ```

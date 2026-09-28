@@ -26,11 +26,25 @@
 // sunt identice, referința e perfectă, skill-ul e nedefinit — și asta NU e verde.
 // Cade ÎNCHIS: date puține NU sunt un verde — sunt tăcere, și se spune pe față.
 // Probă: jev-journal.mjs --autoproba
+//
+// FELUL „council" (2026-09-28, aprobat de Alexandru: «jev design = aprobat»).
+// Design: index/docs/plans/2026-09-28-jev-council-forecast-design.md.
+// Jev ghicește verdictul consiliului ÎNTREG, pe trei clase. Rândurile vin de la
+// scripts/jev-shadow.mjs (adaugaConsiliu), au kind:"council" și trăiesc în
+// ACELAȘI jurnal; raportul binar de mai jos nu le vede, secțiunea consiliului
+// nu le vede pe celelalte.
+//   resolve-council — potrivește rândurile în așteptare cu jurnalele consiliului
+//     (council-*.json) după sha256(proposal). Un rând întrebat la sau după
+//     momentul verdictului e ANULAT: nu ghicim trecutul.
+//   report — Brier pe 3 clase, BSS față de DOI papagali (rata de bază; cuvinte-
+//     cheie din vocabularul cartei), log loss ca verificare, pe clasă și comun.
+//     Sub praguri: „NEJUDECAT: n insuficient", niciodată verde.
 'use strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 // ---------------------------------------------------------------------------
@@ -178,7 +192,7 @@ const galeata = (p) => Math.min(9, Math.floor(p * 10));
 const eticheta = (i) => `[${(i / 10).toFixed(1)},${((i + 1) / 10).toFixed(1)}${i === 9 ? ']' : ')'}`;
 
 export function raport(randuri) {
-  const toate = ultimele(randuri).sort((x, y) => String(x.ts).localeCompare(String(y.ts)));
+  const toate = ultimele(randuri.filter(r => r && r.kind !== 'council')).sort((x, y) => String(x.ts).localeCompare(String(y.ts)));
   const rezolvate = toate.filter(r => r.outcome === true || r.outcome === false);
 
   const galeti = [];
@@ -213,7 +227,13 @@ export function raport(randuri) {
 }
 
 function cmdReport(cale) {
-  const r = raport(citeste(cale));
+  const randuri = citeste(cale);
+  const cod = Math.max(sectiuneBinara(cale, randuri), sectiuneConsiliu(randuri));
+  process.exit(cod);
+}
+
+function sectiuneBinara(cale, randuri) {
+  const r = raport(randuri);
   const p3 = (x) => (x === null ? ' n/a ' : x.toFixed(3));
 
   console.log('');
@@ -250,18 +270,175 @@ function cmdReport(cale) {
       : `nicio găleată nu atinge ${PRAG_GALEATA} rânduri`;
     console.log('not enough rows to judge calibration');
     console.log(`VERDICT: NEJUDECAT — ${de_ce}. Tăcere, nu verde.`);
-    process.exit(0);
+    return 0;
   }
   if (r.rupte.length) {
     console.log(`VERDICT: DECALIBRAT — ${r.rupte.length} găleată/găleți peste toleranța ${TOLERANTA.toFixed(2)}: ${r.rupte.map(g => `${eticheta(g.i)} gap ${g.gap.toFixed(3)} (n=${g.n})`).join('; ')}`);
-    process.exit(2);
+    return 2;
   }
   if (!r.areValoare) {
     console.log(`VERDICT: CALIBRAT-FĂRĂ-VALOARE — calibrat în toleranța ${TOLERANTA.toFixed(2)}, dar Brier skill ${r.bss === null ? 'nedefinit' : r.bss.toFixed(3)} nu e > ${PRAG_BSS.toFixed(3)}: nu bate un papagal care spune mereu rata de bază ${p3(r.rataBaza)}.`);
-    process.exit(2);
+    return 2;
   }
   console.log(`VERDICT: CALIBRAT — ${r.judecate.length} găleată/găleți judecate, toate în toleranța ${TOLERANTA.toFixed(2)}; Brier ${p3(r.brier)}; skill vs rata de bază +${r.bss.toFixed(3)}.`);
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// FELUL „council" — Jev ghicește verdictul consiliului întreg
+// ---------------------------------------------------------------------------
+
+export const CLASE = ['proceed', 'escalate-to-human', 'block'];
+const FEREASTRA_POTRIVIRE = 24 * 3600e3; // un verdict mai departe de 24h de întrebare nu e al ei
+const EPS_LOG = 1e-6;                    // log loss: o probabilitate 0 pe clasa adevărată costă ln(1e6), nu infinit
+
+// Scrierea unui rând de consiliu. Aruncă (nu scrie) pe orice rând strâmb:
+// un jurnal care acceptă gunoi nu mai măsoară nimic.
+export function adaugaConsiliu(cale, rand) {
+  const e = (m) => { throw new Error(`rând council refuzat: ${m}`); };
+  if (!rand || rand.kind !== 'council') e('kind trebuie să fie "council"');
+  if (typeof rand.log_id !== 'string' || !/^jev-council\/[0-9a-f]{12}\/[0-9TZ]+$/.test(rand.log_id)) e('log_id');
+  if (!/^[0-9a-f]{64}$/.test(String(rand.proposal_sha256))) e('proposal_sha256');
+  if (!Number.isFinite(Date.parse(rand.asked_at))) e('asked_at');
+  if (rand.outcome !== null) e('un rând nou are outcome null; rezolvarea vine din jurnalul consiliului');
+  if (typeof rand.error === 'string') {
+    if ('probabilities' in rand) e('un rând de eroare nu poartă probabilități');
+  } else {
+    if (!CLASE.includes(rand.choice)) e('choice');
+    const p = rand.probabilities || {};
+    if (!CLASE.every(k => typeof p[k] === 'number' && p[k] >= 0 && p[k] <= 1)) e('probabilities');
+    if (Math.abs(CLASE.reduce((s, k) => s + p[k], 0) - 1) > 1e-6) e('probabilitățile nu însumează 1');
+    if (!(typeof rand.confidence === 'number' && rand.confidence >= 0 && rand.confidence <= 1)) e('confidence');
+  }
+  adauga(cale, { ts: new Date().toISOString(), ...rand });
+}
+
+const esteConsiliu = (r) => r && r.kind === 'council';
+const inAsteptare = (r) => !r.smoke && !r.error && !r.voided && r.outcome == null;
+
+// Jurnalele consiliului care poartă textul propunerii (de la #11 încoace).
+export function citesteLoguri(dir) {
+  let nume = [];
+  try { nume = fs.readdirSync(dir).filter(f => /^council-.*\.json$/.test(f)); } catch { return { loguri: [], stricate: 0 }; }
+  const loguri = [];
+  let stricate = 0;
+  for (const f of nume) {
+    let r;
+    try { r = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { stricate++; continue; }
+    if (typeof r.proposal !== 'string' || r.proposal_missing || !CLASE.includes(r.decision) || !Number.isFinite(Date.parse(r.timestamp))) continue;
+    loguri.push({ log_id: r.log_id, timestamp: r.timestamp, decision: r.decision, sha: createHash('sha256').update(r.proposal, 'utf8').digest('hex') });
+  }
+  return { loguri, stricate };
+}
+
+// Pur: din rândurile jurnalului și jurnalele consiliului → rândurile NOI de
+// adăugat (rezolvate sau anulate). Nu scrie nimic.
+export function rezolvaConsiliu(randuri, loguri, acum = Date.now()) {
+  const toate = ultimele(randuri.filter(esteConsiliu));
+  const luate = new Set(toate.filter(r => r.council_log_id && !r.voided).map(r => r.council_log_id));
+  const noi = [];
+  const ts = (x) => Date.parse(x.timestamp);
+  for (const row of toate.filter(inAsteptare).sort((a, b) => String(a.asked_at).localeCompare(String(b.asked_at)))) {
+    const asked = Date.parse(row.asked_at);
+    const cand = loguri.filter(l => l.sha === row.proposal_sha256 && Math.abs(ts(l) - asked) <= FEREASTRA_POTRIVIRE);
+    const dupa = cand.filter(l => ts(l) > asked && !luate.has(l.log_id)).sort((a, b) => ts(a) - ts(b))[0];
+    const inainte = cand.filter(l => ts(l) <= asked).sort((a, b) => ts(b) - ts(a))[0];
+    const tinta = dupa || inainte;
+    if (!tinta) {
+      if (acum - asked > FEREASTRA_POTRIVIRE) noi.push({ ...row, voided: 'no-verdict', outcome: null });
+      continue;
+    }
+    // Anti-retro: întrebat la sau după verdict → ANULAT, nu numărat.
+    if (asked >= Date.parse(tinta.timestamp)) { noi.push({ ...row, voided: 'asked-after-verdict', council_log_id: tinta.log_id, council_ts: tinta.timestamp, outcome: null }); continue; }
+    luate.add(tinta.log_id);
+    noi.push({ ...row, outcome: tinta.decision, council_log_id: tinta.log_id, council_ts: tinta.timestamp });
+  }
+  return noi;
+}
+
+function cmdResolveConsiliu(cale) {
+  const { loguri, stricate } = citesteLoguri(path.dirname(cale));
+  const noi = rezolvaConsiliu(citeste(cale), loguri);
+  for (const r of noi) adauga(cale, { ...r, ts: new Date().toISOString() });
+  for (const r of noi) console.log(`${r.voided ? 'ANULAT (' + r.voided + ')' : 'rezolvat ' + r.outcome}: ${r.log_id}${r.council_log_id ? ' ← ' + r.council_log_id : ''}`);
+  console.log(`resolve-council: ${noi.length} rânduri noi · ${loguri.length} jurnale de consiliu citite${stricate ? ` · ${stricate} jurnale stricate, sărite` : ''}`);
   process.exit(0);
+}
+
+const brier3 = (p, o) => CLASE.reduce((s, k) => s + Math.pow((p[k] || 0) - (k === o ? 1 : 0), 2), 0);
+const logloss = (p, o) => -Math.log(Math.max(p[o] || 0, EPS_LOG));
+const rate = (rows) => Object.fromEntries(CLASE.map(k => [k, rows.filter(r => r.outcome === k).length / rows.length]));
+const medie = (rows, f) => rows.reduce((s, r) => s + f(r), 0) / rows.length;
+const skill = (b, ref) => (b === null || !ref ? null : 1 - b / ref);
+
+// Pur. Referințele sunt RETROSPECTIVE, dinadins: cel mai tare papagal posibil.
+export function raportConsiliu(randuri) {
+  const toate = ultimele(randuri.filter(esteConsiliu));
+  const smoke = toate.filter(r => r.smoke).length;
+  const erori = toate.filter(r => !r.smoke && r.error).length;
+  const anulate = toate.filter(r => !r.smoke && r.voided).length;
+  const asteptare = toate.filter(r => inAsteptare(r)).length;
+  const rez = toate.filter(r => !r.smoke && !r.error && !r.voided && CLASE.includes(r.outcome) && r.probabilities);
+  const n = rez.length;
+  const out = { n, smoke, erori, anulate, asteptare, pragTotal: PRAG_TOTAL, pragClasa: PRAG_GALEATA };
+  if (!n) return { ...out, destul: false, verde: false, clase: [] };
+
+  const pi = rate(rez);
+  const pe = { true: rate(rez.filter(r => r.keyword_hit === true)), false: rate(rez.filter(r => r.keyword_hit !== true)) };
+  const papagalCuvinte = (r) => pe[r.keyword_hit === true];
+
+  const jev = { brier: medie(rez, r => brier3(r.probabilities, r.outcome)), ll: medie(rez, r => logloss(r.probabilities, r.outcome)) };
+  const baza = { brier: medie(rez, r => brier3(pi, r.outcome)), ll: medie(rez, r => logloss(pi, r.outcome)) };
+  const cuv = { brier: medie(rez, r => brier3(papagalCuvinte(r), r.outcome)), ll: medie(rez, r => logloss(papagalCuvinte(r), r.outcome)) };
+  const bssBaza = skill(jev.brier, baza.brier);
+  const bssCuv = skill(jev.brier, cuv.brier);
+
+  const clase = CLASE.map(k => {
+    const nk = rez.filter(r => r.outcome === k).length;
+    const bj = medie(rez, r => Math.pow(r.probabilities[k] - (r.outcome === k ? 1 : 0), 2));
+    const bp = pi[k] * (1 - pi[k]);
+    return { k, n: nk, jev: bj, papagal: bp, skill: skill(bj, bp), judecata: nk >= PRAG_GALEATA };
+  });
+
+  const destul = n >= PRAG_TOTAL;
+  const bate = (x) => x !== null && x > PRAG_BSS + EPS_BSS;
+  const verde = destul && bate(bssBaza) && bate(bssCuv) && jev.ll < baza.ll && jev.ll < cuv.ll;
+  return { ...out, pi, jev, baza, cuv, bssBaza, bssCuv, clase, destul, verde };
+}
+
+function sectiuneConsiliu(randuri) {
+  const r = raportConsiliu(randuri);
+  const p3 = (x) => (x === null || x === undefined ? ' n/a ' : x.toFixed(3));
+  const sg = (x) => (x === null ? 'nedefinit' : (x >= 0 ? '+' : '') + x.toFixed(3));
+  console.log('');
+  console.log('jev-journal — CONSILIU: Jev ghicește verdictul consiliului întreg (3 clase)');
+  console.log(`praguri (declarate): minim ${r.pragTotal} rânduri rezolvate comun · minim ${r.pragClasa} rezultate pe clasă · BSS strict > ${PRAG_BSS.toFixed(3)} față de AMBII papagali, și log loss sub amândoi`);
+  console.log(`rezolvate: ${r.n} · în așteptare: ${r.asteptare} · anulate: ${r.anulate} · erori: ${r.erori} · smoke (niciodată scorate): ${r.smoke}`);
+  console.log('onest: la n≈25 pe 2026-10-26 se pot judeca doar „escalate-to-human" și scorul comun; proceed (~1,6 așteptate) și block (~3,2) nu.');
+  if (!r.n) {
+    console.log('VERDICT CONSILIU: NEJUDECAT: n insuficient (0 rânduri rezolvate). Tăcere, nu verde.');
+    return 0;
+  }
+  console.log(`    rate de bază (retrospectiv): ${CLASE.map(k => `${k} ${p3(r.pi[k])}`).join(' · ')}`);
+  console.log('                          Brier(0..2)  log loss');
+  console.log(`    Jev                     ${p3(r.jev.brier)}     ${p3(r.jev.ll)}`);
+  console.log(`    papagal rată de bază    ${p3(r.baza.brier)}     ${p3(r.baza.ll)}`);
+  console.log(`    papagal cuvinte-cheie   ${p3(r.cuv.brier)}     ${p3(r.cuv.ll)}`);
+  console.log(`    BSS vs rata de bază: ${sg(r.bssBaza)} · BSS vs cuvinte-cheie: ${sg(r.bssCuv)}`);
+  console.log('    pe clasă (Brier unu-contra-rest):   n    Jev  papagal   skill');
+  for (const c of r.clase) {
+    console.log(`      ${c.k.padEnd(20)}${String(c.n).padStart(12)}  ${p3(c.jev)}   ${p3(c.papagal)}  ${c.judecata ? sg(c.skill) : `NEJUDECAT: n insuficient (${c.n} < ${r.pragClasa})`}`);
+  }
+  if (!r.destul) {
+    console.log(`VERDICT CONSILIU: NEJUDECAT: n insuficient (${r.n} < ${r.pragTotal} rânduri rezolvate). Tăcere, nu verde.`);
+    return 0;
+  }
+  if (!r.verde) {
+    console.log(`VERDICT CONSILIU: FĂRĂ-VALOARE — nu bate ambii papagali (BSS ${sg(r.bssBaza)} / ${sg(r.bssCuv)}; log loss ${p3(r.jev.ll)} vs ${p3(r.baza.ll)} / ${p3(r.cuv.ll)}).`);
+    return 2;
+  }
+  console.log(`VERDICT CONSILIU: BATE PAPAGALII — BSS ${sg(r.bssBaza)} vs rata de bază, ${sg(r.bssCuv)} vs cuvinte-cheie; log loss sub amândoi.`);
+  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -422,19 +599,29 @@ jev-journal.mjs <subcomandă>
           --adopted true|false [--outcome true|false|null]
   resolve --log-id <id> --outcome true|false
   latest  --log-id <id>
+  resolve-council   (rândurile kind:"council" din jurnalele consiliului)
   report
   --autoproba
 `);
   process.exit(2);
 }
 
-if (process.argv.includes('--autoproba')) autoproba();
+// Rulez CLI-ul doar când sunt chemat direct: jev-shadow.mjs mă importă.
+// Căi REALE, ca în synthesize.mjs — skill-ul e atins prin symlink-uri.
+function eMain() {
+  try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); }
+  catch { return false; }
+}
+
+if (!eMain()) { /* importat */ }
+else if (process.argv.includes('--autoproba')) autoproba();
 else {
   const sub = process.argv[2];
   const a = argumente(process.argv.slice(3));
   const cale = caleJurnal();
   if (sub === 'append') cmdAppend(a, cale);
   else if (sub === 'resolve') cmdResolve(a, cale);
+  else if (sub === 'resolve-council') cmdResolveConsiliu(cale);
   else if (sub === 'latest') cmdLatest(a, cale);
   else if (sub === 'report') cmdReport(cale);
   else folosire();
