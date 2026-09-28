@@ -39,6 +39,7 @@
 - `decision` MUST be `"escalate-to-human"` when `risk.tier` is `"medium"` or `"high"`, OR when any human-gate category applies, OR when any tripwire fires — unless `decision` is already `"block"`.
 - `decision` MAY be `"proceed"` only when: `compliance.allowed === true` AND `risk.tier === "low"` AND `tripwires_fired` is empty AND no human-gate category applies.
 - `compliance.veto_reason` MUST be non-null when `compliance.allowed === false`.
+- Optional flags, present only when true: `proposal_missing: true` (no proposal given; `proposal` holds a placeholder) and `proposal_mismatch: true` (an assessor `proposal` field differed from `--proposal-file`; `proposal` holds the file text).
 - `log_id` MUST be unique; never reuse.
 
 ---
