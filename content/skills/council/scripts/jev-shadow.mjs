@@ -51,7 +51,7 @@ const DEFAULT_KEY_FILE = '/run/agenix/jev-openrouter-key';
 const DEFAULT_ENDPOINT = 'https://openrouter.ai/api/alpha/decisions';
 const DEFAULT_CREDIT_URL = 'https://openrouter.ai/api/v1/key';
 const DEFAULT_TIMEOUT_MS = 45000;
-const MAX_PROPOSAL_BYTES = 24 * 1024; // the request cap is 32 KiB; the rest is the question + council text
+export const MAX_PROPOSAL_BYTES = 24 * 1024; // the request cap is 32 KiB; the rest is the question + council text
 
 // Jev's action keys avoid the word the guard refuses; the journal stores the
 // council's own verdict names.
