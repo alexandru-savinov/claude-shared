@@ -58,8 +58,17 @@ export const PRAG_BSS     = 0;    // Brier skill vs rata de bază: verdele cere 
 const EPS_BSS             = 1e-9; // zgomot de virgulă mobilă: un papagal exact nu trece prin rotunjire
 const FEREASTRA_CREEP     = 20;   // ultimele N treceri, pentru panta adopției
 
-export const caleJurnal = (home = os.homedir()) =>
-  path.join(home, '.claude', 'index', 'council', 'jev-journal.jsonl');
+// SURSA (2026-09-30, al patrulea scaun, aprobat de Alexandru: «da, aprobat ca
+// si jev»). Codex ghicește și el verdictul consiliului, prin
+// scripts/codex-shadow.mjs. Rândurile lui stau în FIȘIERUL LUI, nu în al lui
+// Jev: rezolvarea marchează un jurnal de consiliu drept „luat" în interiorul
+// unui fișier, iar două surse în același fișier și-ar fura una alteia
+// verdictul. Același cod, alt fișier: `--source codex`.
+export const SURSE = { jev: 'jev-journal.jsonl', codex: 'codex-journal.jsonl' };
+export const caleJurnal = (home = os.homedir(), sursa = 'jev') => {
+  if (!Object.hasOwn(SURSE, sursa)) throw new Error(`sursă necunoscută: ${sursa}`);
+  return path.join(home, '.claude', 'index', 'council', SURSE[sursa]);
+};
 
 // ---------------------------------------------------------------------------
 // Citire / scriere
@@ -226,9 +235,12 @@ export function raport(randuri) {
   return { toate, rezolvate, galeti, judecate, rupte, brier, rataBaza, brierRef, bss, areValoare, destul, adoptieTotal, adoptieRecent, ultimele20 };
 }
 
-function cmdReport(cale) {
+function cmdReport(cale, sursa = 'jev') {
   const randuri = citeste(cale);
-  const cod = Math.max(sectiuneBinara(cale, randuri), sectiuneConsiliu(randuri));
+  // Codex are doar felul „council"; secțiunea binară e a lui Jev.
+  let cod;
+  if (sursa === 'jev') cod = Math.max(sectiuneBinara(cale, randuri), sectiuneConsiliu(randuri, 'jev'));
+  else { console.log(`jurnal: ${cale}`); cod = sectiuneConsiliu(randuri, sursa); }
   process.exit(cod);
 }
 
@@ -297,7 +309,7 @@ const EPS_LOG = 1e-6;                    // log loss: o probabilitate 0 pe clasa
 export function adaugaConsiliu(cale, rand) {
   const e = (m) => { throw new Error(`rând council refuzat: ${m}`); };
   if (!rand || rand.kind !== 'council') e('kind trebuie să fie "council"');
-  if (typeof rand.log_id !== 'string' || !/^jev-council\/[0-9a-f]{12}\/[0-9TZ]+$/.test(rand.log_id)) e('log_id');
+  if (typeof rand.log_id !== 'string' || !/^(jev|codex)-council\/[0-9a-f]{12}\/[0-9TZ]+$/.test(rand.log_id)) e('log_id');
   if (!/^[0-9a-f]{64}$/.test(String(rand.proposal_sha256))) e('proposal_sha256');
   if (!Number.isFinite(Date.parse(rand.asked_at))) e('asked_at');
   if (rand.outcome !== null) e('un rând nou are outcome null; rezolvarea vine din jurnalul consiliului');
@@ -306,6 +318,11 @@ export function adaugaConsiliu(cale, rand) {
     for (const k of ['probabilities', 'choice', 'confidence', 'proposal', 'keyword_classes', 'error']) if (k in rand) e(`un rând sărit nu poartă ${k}`);
   } else if (typeof rand.error === 'string') {
     if ('probabilities' in rand) e('un rând de eroare nu poartă probabilități');
+  } else if (rand.tool_use !== undefined) {
+    // Codex a rulat o unealtă: răspunsul nu mai e „din text". Nescorabil, deci
+    // fără nimic de scorat.
+    if (rand.tool_use !== true) e('tool_use poate fi doar true');
+    for (const k of ['probabilities', 'choice', 'confidence']) if (k in rand) e(`un rând cu tool_use nu poartă ${k}`);
   } else {
     if (!CLASE.includes(rand.choice)) e('choice');
     const p = rand.probabilities || {};
@@ -317,7 +334,7 @@ export function adaugaConsiliu(cale, rand) {
 }
 
 const esteConsiliu = (r) => r && r.kind === 'council';
-const inAsteptare = (r) => !r.smoke && !r.error && !r.skipped && !r.voided && r.outcome == null;
+const inAsteptare = (r) => !r.smoke && !r.error && !r.skipped && !r.tool_use && !r.voided && r.outcome == null;
 
 // Jurnalele consiliului care poartă textul propunerii (de la #11 încoace).
 export function citesteLoguri(dir) {
@@ -375,16 +392,17 @@ const medie = (rows, f) => rows.reduce((s, r) => s + f(r), 0) / rows.length;
 const skill = (b, ref) => (b === null || !ref ? null : 1 - b / ref);
 
 // Pur. Referințele sunt RETROSPECTIVE, dinadins: cel mai tare papagal posibil.
-export function raportConsiliu(randuri) {
+export function raportConsiliu(randuri, prag = PRAG_TOTAL) {
   const toate = ultimele(randuri.filter(esteConsiliu));
   const smoke = toate.filter(r => r.smoke).length;
   const erori = toate.filter(r => !r.smoke && r.error).length;
   const sarite = toate.filter(r => !r.smoke && r.skipped === 'security').length;
   const anulate = toate.filter(r => !r.smoke && r.voided).length;
+  const unelte = toate.filter(r => !r.smoke && r.tool_use === true).length;
   const asteptare = toate.filter(r => inAsteptare(r)).length;
-  const rez = toate.filter(r => !r.smoke && !r.error && !r.skipped && !r.voided && CLASE.includes(r.outcome) && r.probabilities);
+  const rez = toate.filter(r => !r.smoke && !r.error && !r.skipped && !r.tool_use && !r.voided && CLASE.includes(r.outcome) && r.probabilities);
   const n = rez.length;
-  const out = { n, smoke, erori, sarite, anulate, asteptare, pragTotal: PRAG_TOTAL, pragClasa: PRAG_GALEATA };
+  const out = { n, smoke, erori, sarite, unelte, anulate, asteptare, pragTotal: prag, pragClasa: PRAG_GALEATA };
   if (!n) return { ...out, destul: false, verde: false, clase: [] };
 
   const pi = rate(rez);
@@ -404,32 +422,40 @@ export function raportConsiliu(randuri) {
     return { k, n: nk, jev: bj, papagal: bp, skill: skill(bj, bp), judecata: nk >= PRAG_GALEATA };
   });
 
-  const destul = n >= PRAG_TOTAL;
+  const destul = n >= prag;
   const bate = (x) => x !== null && x > PRAG_BSS + EPS_BSS;
   const verde = destul && bate(bssBaza) && bate(bssCuv) && jev.ll < baza.ll && jev.ll < cuv.ll;
   return { ...out, pi, jev, baza, cuv, bssBaza, bssCuv, clase, destul, verde };
 }
 
-function sectiuneConsiliu(randuri) {
-  const r = raportConsiliu(randuri);
+// Ce diferă între surse la raport: numele, pragul, nota onestă. Codex are
+// pragul 30 (brief-ul din 2026-09-30), Jev 20.
+export const PROFIL = {
+  jev: { nume: 'Jev', prag: PRAG_TOTAL, onest: 'onest: la n≈25 pe 2026-10-26 se pot judeca doar „escalate-to-human" și scorul comun; proceed (~1,6 așteptate) și block (~3,2) nu.' },
+  codex: { nume: 'Codex', prag: 30, onest: 'onest: Codex se oprește singur după 2026-12-28; rândurile cu tool_use (a rulat o unealtă) nu se scorează niciodată.' },
+};
+
+function sectiuneConsiliu(randuri, sursa = 'jev') {
+  const { nume, prag, onest } = PROFIL[sursa];
+  const r = raportConsiliu(randuri, prag);
   const p3 = (x) => (x === null || x === undefined ? ' n/a ' : x.toFixed(3));
   const sg = (x) => (x === null ? 'nedefinit' : (x >= 0 ? '+' : '') + x.toFixed(3));
   console.log('');
-  console.log('jev-journal — CONSILIU: Jev ghicește verdictul consiliului întreg (3 clase)');
+  console.log(`jev-journal — CONSILIU: ${nume} ghicește verdictul consiliului întreg (3 clase)`);
   console.log(`praguri (declarate): minim ${r.pragTotal} rânduri rezolvate comun · minim ${r.pragClasa} rezultate pe clasă · BSS strict > ${PRAG_BSS.toFixed(3)} față de AMBII papagali, și log loss sub amândoi`);
-  console.log(`rezolvate: ${r.n} · în așteptare: ${r.asteptare} · anulate: ${r.anulate} · erori: ${r.erori} · sărite (securitate): ${r.sarite} · smoke (niciodată scorate): ${r.smoke}`);
-  console.log('onest: la n≈25 pe 2026-10-26 se pot judeca doar „escalate-to-human" și scorul comun; proceed (~1,6 așteptate) și block (~3,2) nu.');
+  console.log(`rezolvate: ${r.n} · în așteptare: ${r.asteptare} · anulate: ${r.anulate} · erori: ${r.erori} · sărite (securitate): ${r.sarite} · smoke (niciodată scorate): ${r.smoke}${sursa === 'jev' ? '' : ` · tool_use (niciodată scorate): ${r.unelte}`}`);
+  console.log(onest);
   if (!r.n) {
     console.log('VERDICT CONSILIU: NEJUDECAT: n insuficient (0 rânduri rezolvate). Tăcere, nu verde.');
     return 0;
   }
   console.log(`    rate de bază (retrospectiv): ${CLASE.map(k => `${k} ${p3(r.pi[k])}`).join(' · ')}`);
   console.log('                          Brier(0..2)  log loss');
-  console.log(`    Jev                     ${p3(r.jev.brier)}     ${p3(r.jev.ll)}`);
+  console.log(`    ${nume.padEnd(24)}${p3(r.jev.brier)}     ${p3(r.jev.ll)}`);
   console.log(`    papagal rată de bază    ${p3(r.baza.brier)}     ${p3(r.baza.ll)}`);
   console.log(`    papagal cuvinte-cheie   ${p3(r.cuv.brier)}     ${p3(r.cuv.ll)}`);
   console.log(`    BSS vs rata de bază: ${sg(r.bssBaza)} · BSS vs cuvinte-cheie: ${sg(r.bssCuv)}`);
-  console.log('    pe clasă (Brier unu-contra-rest):   n    Jev  papagal   skill');
+  console.log(`    pe clasă (Brier unu-contra-rest):   n    ${nume}  papagal   skill`);
   for (const c of r.clase) {
     console.log(`      ${c.k.padEnd(20)}${String(c.n).padStart(12)}  ${p3(c.jev)}   ${p3(c.papagal)}  ${c.judecata ? sg(c.skill) : `NEJUDECAT: n insuficient (${c.n} < ${r.pragClasa})`}`);
   }
@@ -603,8 +629,8 @@ jev-journal.mjs <subcomandă>
           --adopted true|false [--outcome true|false|null]
   resolve --log-id <id> --outcome true|false
   latest  --log-id <id>
-  resolve-council   (rândurile kind:"council" din jurnalele consiliului)
-  report
+  resolve-council [--source jev|codex]   (rândurile kind:"council" din jurnalele consiliului)
+  report          [--source jev|codex]
   --autoproba
 `);
   process.exit(2);
@@ -622,11 +648,14 @@ else if (process.argv.includes('--autoproba')) autoproba();
 else {
   const sub = process.argv[2];
   const a = argumente(process.argv.slice(3));
-  const cale = caleJurnal();
+  const sursa = a.source === undefined ? 'jev' : a.source;
+  if (!Object.hasOwn(SURSE, sursa)) mori(`--source trebuie să fie ${Object.keys(SURSE).join(' sau ')}; am primit ${JSON.stringify(a.source)}.`);
+  if (sursa !== 'jev' && !['resolve-council', 'report'].includes(sub)) mori(`--source ${sursa} merge doar cu resolve-council și report.`);
+  const cale = caleJurnal(os.homedir(), sursa);
   if (sub === 'append') cmdAppend(a, cale);
   else if (sub === 'resolve') cmdResolve(a, cale);
   else if (sub === 'resolve-council') cmdResolveConsiliu(cale);
   else if (sub === 'latest') cmdLatest(a, cale);
-  else if (sub === 'report') cmdReport(cale);
+  else if (sub === 'report') cmdReport(cale, sursa);
   else folosire();
 }

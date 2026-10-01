@@ -42,9 +42,9 @@ Accept a clear, specific description of the proposed action. If vague, ask for
 clarification before proceeding. The proposal must be specific enough to evaluate.
 
 Once the proposal is settled, write it verbatim to a file with the Write tool
-(e.g. `/tmp/council-proposal.txt`). The SAME file goes to Jev at Step 2b and to
-`synthesize.mjs` at Step 3; Jev's row is matched to the verdict by the sha256 of
-this text, so do not edit the file between the two.
+(e.g. `/tmp/council-proposal.txt`). The SAME file goes to Jev and to Codex at
+Step 2b and to `synthesize.mjs` at Step 3; their rows are matched to the verdict by
+the sha256 of this text, so do not edit the file between the two.
 
 ### Step 2 — Run the three assessors INDEPENDENTLY
 
@@ -117,6 +117,40 @@ Approved by Alexandru 2026-09-28: «jev design = aprobat. in lucru.»
   Security findings stay in the house. Empty or over-24-KiB proposals are not sent
   either. The key is read from `/run/agenix/jev-openrouter-key` only.
 
+#### Step 2b, third shadow — Codex forecasts the verdict (measurement only)
+
+In the same message, launch Codex in the background too (Bash `run_in_background`):
+
+```bash
+node scripts/codex-shadow.mjs --proposal-file /tmp/council-proposal.txt
+```
+
+It asks Codex (`codex exec`, read-only sandbox, stdin `/dev/null`, a fresh empty
+temp dir, a hard timeout, the model his Codex config selects; never `-m`) the same
+one question as Jev: which verdict will the full council reach, `proceed` /
+`escalate-to-human` / `block`, with probabilities, as JSON. It writes ONE row
+(kind `council`, source `codex`) to its own journal
+`~/.claude/index/council/codex-journal.jsonl` and nothing else.
+Approved by Alexandru 2026-09-30: «da, aprobat ca si jev».
+
+- **Codex never touches the verdict.** Do not read, show or reason from its answer
+  at Step 4, and never pass it to `synthesize.mjs`. Do not wait for it.
+- **A Codex failure is not a council failure.** The script always exits 0; a
+  timeout, rate limit, missing `codex`, non-zero exit or bad answer becomes an
+  `error` row, or nothing.
+- **From the text only.** The prompt tells Codex to run no commands, and the
+  `--json` event stream is checked: if any command or tool event appears, the row
+  is `tool_use:true`, carries no probabilities, and is never scored.
+- **No labels.** Nothing sent names a model or this house: the council is "a
+  three-member review panel", and model names, `Co-Authored-By` / `Claude-Session`
+  lines and "Generated with Claude Code" are replaced by `[model]`. The row keeps
+  `anonymized:true` and the count, never the removed text. This removes the label
+  bias, not the style bias.
+- **It stops by itself** after 2026-12-28 (Europe/Chisinau): no call, no row.
+- **A proposal that touches security is NOT sent** — Jev's filter, the same
+  function, on the text that would be sent: a `{skipped:"security"}` row with no
+  text and no probabilities. Empty or over-24-KiB proposals are not sent either.
+
 ### Step 3 — Synthesize
 
 **The proposal reaches the synthesizer through a FILE, never through the shell
@@ -184,11 +218,14 @@ logs (local files only; a failure here changes nothing):
 
 ```bash
 node scripts/jev-journal.mjs resolve-council
+node scripts/jev-journal.mjs resolve-council --source codex
 ```
 
 A row asked at or after its verdict's timestamp is voided, never scored.
 `node scripts/jev-journal.mjs report` scores Jev against two parrots (base rate;
 tripwire keywords). Under 20 resolved rows it says `NEJUDECAT: n insuficient`.
+`node scripts/jev-journal.mjs report --source codex` scores Codex against the same
+two parrots; under 30 resolved rows it says `NEJUDECAT: n insuficient`.
 
 ---
 
@@ -281,10 +318,13 @@ content/skills/council/
     shadow-report.mjs   — read-only: shadow vs full agreement, looser/stricter, gate
     jev-shadow.mjs      — Step 2b: Jev forecasts the verdict, one journal row
     jev-journal.mjs     — the Jev experiment journal: append, resolve, report
+                          (--source codex: the same resolve/report on Codex's journal)
+    codex-shadow.mjs    — Step 2b: Codex forecasts the verdict, one journal row
   tests/
     fixture-a-low-risk.json
     fixture-b-high-risk.json
     fixture-c-compliance-violation.json
     runner.mjs          — end-to-end test runner (must pass before changes)
     jev-shadow.test.mjs — Jev shadow closing check, with its local stub
+    codex-shadow.test.mjs — Codex shadow closing check, with its `codex` stub
 ```
