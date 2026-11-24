@@ -1,8 +1,9 @@
 # Security policy
 
-This repo is **private** but distributed across multiple machines via Nix
-flakes and cloned into writable working trees on each host. Treat it as if any
-commit could leak to a public mirror tomorrow.
+This repo is **public** and distributed across multiple machines via Nix
+flakes and cloned into writable working trees on each host. Treat every commit
+as permanently world-readable: anything pushed here can be copied by anyone
+before it is removed.
 
 ## What must never land here
 
@@ -70,7 +71,11 @@ written to `.git/objects/`.
 3. **Update consumers.** Re-encrypt agenix secrets in `nixos-config` /
    `darwin-config` with the new value; rebuild each affected host.
 
-4. **Purge from git history.** Only after rotation is complete and verified:
+4. **History is not a fix.** Because the repo is public, a pushed value must
+   be treated as copied; rotation (step 2) is what makes it harmless. Rewriting
+   history is optional cleanup after rotation is verified, and `main` is
+   protected against force-pushes, so it needs the owner to lift that rule
+   for the rewrite:
 
    ```sh
    # install once: nix run nixpkgs#git-filter-repo -- --help
@@ -79,11 +84,8 @@ written to `.git/objects/`.
    git filter-repo --replace-text <(echo '<leaked-value>==>REDACTED')
    ```
 
-   Then force-push and notify every consumer to re-clone:
-
-   ```sh
-   git push --force-with-lease origin main
-   ```
+   Then notify every consumer to re-clone. Copies made before the rewrite
+   (forks, clones, caches) keep the old history.
 
 5. **Audit the blast radius.** Check logs on every system where the
    credential could have been used. If a private key leaked, audit
@@ -96,5 +98,7 @@ written to `.git/objects/`.
 ## Reporting
 
 This is a personal infrastructure repo. If you are not the owner and you
-believe you have found a leaked credential, contact the repo owner directly
-via GitHub.
+believe you have found a leaked credential or another security problem, report
+it privately through GitHub's private vulnerability reporting
+(**Security → Report a vulnerability** on this repository). Please do not open
+a public issue.

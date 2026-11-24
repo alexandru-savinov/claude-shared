@@ -210,7 +210,7 @@ in
       description = ''
         Path to a user-level `CLAUDE.md` installed as `~/.claude/CLAUDE.md`.
         Defaults to the `content/CLAUDE.md` bundled with claude-shared, so every
-        consumer (Mac, rpi5, …) gets the shared working agreement automatically.
+        consumer (every host) gets the shared working agreement automatically.
         Set to a different path to override, or `null` to write no user-level
         CLAUDE.md on a given host.
       '';

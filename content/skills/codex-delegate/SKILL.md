@@ -17,7 +17,7 @@ codex exec -s workspace-write -c 'sandbox_workspace_write.network_access=true' \
 - `network_access=true` is required for ssh/curl/gh; without it the macOS seatbelt blocks the network silently.
 - `-C <workdir>`: a fresh scratch dir unless Codex must edit a repo (then the worktree).
 - `-o <outfile>`: Codex's final message lands here. Read this, nothing else.
-- Codex is logged in with the user's ChatGPT account (`codex login status`). It can ssh with BatchMode to the hosts the Mac already has keys for (choir, rpi5).
+- Codex is logged in with the user's ChatGPT account (`codex login status`). It can ssh with BatchMode to the hosts the Mac already has keys for (the hosts in its ssh config).
 
 ## Rules that prevent lost work
 
