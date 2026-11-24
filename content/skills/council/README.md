@@ -15,7 +15,7 @@ In any Claude Code session:
 
 Example:
 ```
-/council Deploy the updated n8n workflow sync service to sancta-choir via nixos-rebuild switch
+/council Deploy the updated n8n workflow sync service to <host> via nixos-rebuild switch
 ```
 
 The skill will:
